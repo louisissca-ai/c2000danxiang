@@ -1,0 +1,6 @@
+/Debug/
+/Release/
+/*.out
+/*.map
+/*.hex
+/*.dwo
