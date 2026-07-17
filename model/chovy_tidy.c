@@ -359,23 +359,6 @@ void chovy_tidy_step0(void)            /* Sample time: [0.0s, 0.0s] */
   {
     /*  Internal Reference Voltage : Fixed scale 0 to 3.3 V range.  */
     /*  External Reference Voltage : Allowable ranges of VREFHI(ADCINA0) = 3.3 and VREFLO(tied to ground) = 0  */
-    AdcaRegs.ADCSOCFRC1.bit.SOC3 = 1U;
-
-    /* Wait for the period of Sampling window and EOC result to be latched after trigger */
-#ifndef __TMS320C28XX_CLA__
-
-    asm(" RPT #32|| NOP");
-
-#endif
-
-#ifdef __TMS320C28XX_CLA__
-
-    real32_T wait_index;
-    for (wait_index= 5; wait_index > 0; wait_index--)
-      __mnop();
-
-#endif
-
     chovy_tidy_B.ADC8 = (AdcaResultRegs.ADCRESULT3);
   }
 
@@ -665,23 +648,6 @@ void chovy_tidy_step0(void)            /* Sample time: [0.0s, 0.0s] */
   {
     /*  Internal Reference Voltage : Fixed scale 0 to 3.3 V range.  */
     /*  External Reference Voltage : Allowable ranges of VREFHI(ADCINA0) = 3.3 and VREFLO(tied to ground) = 0  */
-    AdccRegs.ADCSOCFRC1.bit.SOC2 = 1U;
-
-    /* Wait for the period of Sampling window and EOC result to be latched after trigger */
-#ifndef __TMS320C28XX_CLA__
-
-    asm(" RPT #32|| NOP");
-
-#endif
-
-#ifdef __TMS320C28XX_CLA__
-
-    real32_T wait_index;
-    for (wait_index= 5; wait_index > 0; wait_index--)
-      __mnop();
-
-#endif
-
     chovy_tidy_B.ADC3 = (AdccResultRegs.ADCRESULT2);
   }
 

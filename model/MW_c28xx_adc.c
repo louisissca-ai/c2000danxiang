@@ -41,7 +41,7 @@ void config_ADCC_SOC2(void)
 {
   EALLOW;
   AdccRegs.ADCSOC2CTL.bit.CHSEL = 2U;  /* Set SOC2 channel select to ADCIN2*/
-  AdccRegs.ADCSOC2CTL.bit.TRIGSEL = 0U;
+  AdccRegs.ADCSOC2CTL.bit.TRIGSEL = 5U;
   AdccRegs.ADCSOC2CTL.bit.ACQPS = (uint16_T)7.0;
                                 /* Set SOC2 S/H Window to 8.0 ADC Clock Cycles*/
   AdccRegs.ADCINTSOCSEL1.bit.SOC2 = 0U;
@@ -107,7 +107,7 @@ void config_ADCA_SOC3(void)
 {
   EALLOW;
   AdcaRegs.ADCSOC3CTL.bit.CHSEL = 3U;  /* Set SOC3 channel select to ADCIN3*/
-  AdcaRegs.ADCSOC3CTL.bit.TRIGSEL = 0U;
+  AdcaRegs.ADCSOC3CTL.bit.TRIGSEL = 5U;
   AdcaRegs.ADCSOC3CTL.bit.ACQPS = (uint16_T)7.0;
                                 /* Set SOC3 S/H Window to 8.0 ADC Clock Cycles*/
   AdcaRegs.ADCINTSOCSEL1.bit.SOC3 = 0U;
