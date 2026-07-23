@@ -11,19 +11,42 @@
 #define APP_VREF_DEFAULT        20.0f
 #define APP_IREF_DEFAULT        3.0f
 #define APP_OUTPUT_FREQUENCY_HZ 50.0f
+#define APP_VBUS_NOMINAL_V      36.0f
+
+#define APP_PWM_TBPRD_COUNTS              3000u
+#define APP_PWM_DEADTIME_COUNTS            24u
+/* ponytail: 24 counts assumes the present driver accepts a 200 ns effective pulse; raise it after gate-waveform calibration if needed. */
+#define APP_PWM_MIN_EFFECTIVE_PULSE_COUNTS 24u
+#define APP_PWM_MIN_COMPARE_COUNTS \
+    (APP_PWM_DEADTIME_COUNTS + APP_PWM_MIN_EFFECTIVE_PULSE_COUNTS)
+#define APP_PWM_MAX_MODULATION \
+    (1.0f - 2.0f * (float)APP_PWM_MIN_COMPARE_COUNTS / \
+    (float)APP_PWM_TBPRD_COUNTS)
+#define APP_VREF_CAPABILITY_RESERVE 0.95f
+#define APP_SQRT2                    1.4142135623730951f
+#define APP_VREF_MAX \
+    (APP_VBUS_NOMINAL_V * APP_PWM_MAX_MODULATION * \
+    APP_VREF_CAPABILITY_RESERVE / APP_SQRT2)
+
+#if (2u * APP_PWM_MIN_COMPARE_COUNTS >= APP_PWM_TBPRD_COUNTS)
+#error "PWM minimum compare margin must be less than half of TBPRD"
+#endif
 
 #define APP_VREF_MIN            0.0f
-#define APP_VREF_MAX            25.0f
 
 #define APP_IREF_MIN            0.0f
 #define APP_IREF_MAX            4.5f
 /* ponytail: software OCP is temporarily disabled; set to 1 after ADC transient calibration. */
 #define APP_SOFTWARE_OCP_ENABLED 0u
 
-#define APP_ADC_CAL_VOUT_B_DEFAULT  1.608f
-#define APP_ADC_CAL_VOUT_K_DEFAULT  51.37954f
-#define APP_ADC_CAL_IOUT_B_DEFAULT  1.606f
-#define APP_ADC_CAL_IOUT_K_DEFAULT  3.33333f
+#define APP_ADC_CAL_VOUT_B_DEFAULT  1.643f
+/*
+ * One-point board calibration: 19.368 V true-RMS / 3.2 V indicated,
+ * with the board voltage gain below.
+ */
+#define APP_ADC_CAL_VOUT_K_DEFAULT  109.781873f
+#define APP_ADC_CAL_IOUT_B_DEFAULT  1.643f
+#define APP_ADC_CAL_IOUT_K_DEFAULT  3.678481f
 #define APP_ADC_CAL_B_MIN           0.0f
 #define APP_ADC_CAL_B_MAX           3.3f
 #define APP_ADC_CAL_K_MIN           0.001f

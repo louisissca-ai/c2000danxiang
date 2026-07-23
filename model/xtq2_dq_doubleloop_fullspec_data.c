@@ -78,7 +78,7 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    */
   1.0,
 
-  /* Variable: Vin
+  /* Variable: Vin (overridden from APP_VBUS_NOMINAL_V at startup)
    * Referenced by:
    *   '<Root>/Normalized modulation m'
    *   '<Root>/Modulation limit'
@@ -220,15 +220,15 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    */
   0.00080586080586080586,
 
-  /* Expression: -1.608
+  /* Expression: -1.643
    * Referenced by: '<Root>/Constant5'
    */
-  -1.608,
+  -1.643,
 
-  /* Expression: 51.37954
+  /* Expression: 109.781873
    * Referenced by: '<Root>/Gain6'
    */
-  51.37954,
+  109.781873,
 
   /* Expression: [Cfilter*(2*pi*Fad)*(2/Ts)/((2/Ts)+(2*pi*Fad)),-Cfilter*(2*pi*Fad)*(2/Ts)/((2/Ts)+(2*pi*Fad))]
    * Referenced by: '<Root>/Capacitor current estimator'
@@ -270,15 +270,15 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    */
   0.00080586080586080586,
 
-  /* Expression: -1.606
+  /* Expression: -1.643
    * Referenced by: '<Root>/Constant1'
    */
-  -1.606,
+  -1.643,
 
-  /* Expression: 3.33333
+  /* Expression: 3.678481
    * Referenced by: '<Root>/Gain4'
    */
-  3.33333,
+  3.678481,
 
   /* Expression: 0
    * Referenced by: '<Root>/Current 90 deg delay (Ts)'

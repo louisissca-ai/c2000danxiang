@@ -21,8 +21,12 @@ uint16_t ControlModel_GetFaultCode(void);
 uint16_t ControlModel_GetActiveMode(void);
 void ControlModel_TripFault(uint16_t fault_code);
 float ControlModel_GetVrefRamp(void);
+float ControlModel_UpdateVoutRmsReference(float vref_rms,
+    float vout_sample, uint16_t regulate);
+float ControlModel_GetRunningVoutRms(void);
 void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
     float *duty_a_percent, float *duty_b_percent);
+uint16_t ControlModel_ClampPwmCompare(uint16_t period, uint16_t compare);
 void ControlModel_UpdateStoppedFeedback(float vin, float vout_sample,
     float iout_sample);
 void ControlModel_SetFeedback(float vin, float vout, float iout, float duty);

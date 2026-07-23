@@ -61,11 +61,33 @@ int main(void)
     float first_ramp;
     float initial_vref;
     float initial_calibration;
+    float max_duty;
+    float min_duty;
+    float reference;
+    uint16_t compare_a;
+    uint16_t compare_b;
     uint16_t i;
 
     ControlIF_Init();
     ControlIF_GetSetpoint(&setpoint);
     AssertNear(setpoint.iref, 3.0f, 0.0f);
+    assert(APP_VREF_MAX > 23.0f);
+    assert(APP_VREF_MAX < 24.0f);
+    AssertNear(APP_ADC_CAL_VOUT_K_DEFAULT, 109.781873f, 0.00001f);
+    AssertNear(APP_ADC_CAL_VOUT_K_DEFAULT,
+        18.138269f * 19.368f / 3.2f, 0.0001f);
+
+    /* Open and closed loop share the same final compare safety boundary. */
+    assert(ControlModel_ClampPwmCompare(APP_PWM_TBPRD_COUNTS, 0u) ==
+        APP_PWM_MIN_COMPARE_COUNTS);
+    assert(ControlModel_ClampPwmCompare(APP_PWM_TBPRD_COUNTS,
+        APP_PWM_MIN_COMPARE_COUNTS) == APP_PWM_MIN_COMPARE_COUNTS);
+    assert(ControlModel_ClampPwmCompare(APP_PWM_TBPRD_COUNTS, 1500u) ==
+        1500u);
+    assert(ControlModel_ClampPwmCompare(APP_PWM_TBPRD_COUNTS, 3000u) ==
+        (APP_PWM_TBPRD_COUNTS - APP_PWM_MIN_COMPARE_COUNTS));
+    assert(ControlModel_ClampPwmCompare(80u, 0u) == 40u);
+
     ControlModel_Init();
     assert(ControlModel_GetActiveMode() == APP_CONTROL_MODE_CLOSED_LOOP);
 
@@ -141,6 +163,78 @@ int main(void)
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
 
+    /* One 400-sample 20 Vrms sine cycle measures 20 Vrms. */
+    SetRunCommand(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(20.0f,
+            20.0f * 1.4142135623730951f *
+            sinf(6.2831853071795865f * (float)i / 400.0f), APP_TRUE);
+    }
+    AssertNear(ControlModel_GetRunningVoutRms(), 20.0f, 0.0001f);
+    AssertNear(reference, 20.0f, 0.0001f);
+
+    /* A 26 Vrms cycle can reduce the internal reference only 0.25 V. */
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            20.0f, 26.0f, APP_TRUE);
+    }
+    AssertNear(ControlModel_GetRunningVoutRms(), 26.0f, 0.0001f);
+    AssertNear(reference, 19.75f, 0.0001f);
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            20.0f, 26.0f, APP_TRUE);
+    }
+    AssertNear(reference, 19.50f, 0.0001f);
+
+    /* STOP clears both measured RMS and the supervisory correction. */
+    SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    AssertNear(ControlModel_GetRunningVoutRms(), 0.0f, 0.0f);
+    reference = ControlModel_UpdateVoutRmsReference(
+        20.0f, 0.0f, APP_TRUE);
+    AssertNear(reference, 20.0f, 0.0f);
+
+    /* Low RMS raises the reference, while both capability limits unwind. */
+    SetRunCommand(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
+    for (i = 1u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            20.0f, 10.0f, APP_TRUE);
+    }
+    AssertNear(reference, 20.25f, 0.0001f);
+    SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    SetRunCommand(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            APP_VREF_MAX, 0.0f, APP_TRUE);
+    }
+    AssertNear(reference, APP_VREF_MAX, 0.0001f);
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            0.0f, 26.0f, APP_TRUE);
+    }
+    AssertNear(reference, 0.0f, 0.0001f);
+
+    /* Open loop still measures RMS but never retains a reference correction. */
+    for (i = 0u; i < 400u; i++)
+    {
+        reference = ControlModel_UpdateVoutRmsReference(
+            20.0f, 26.0f, APP_FALSE);
+    }
+    AssertNear(reference, 20.0f, 0.0f);
+    AssertNear(ControlModel_GetRunningVoutRms(), 26.0f, 0.0001f);
+    SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+
     /* STOP feedback is a 400-sample RMS and always reports zero duty. */
     for (i = 0u; i < 399u; i++)
     {
@@ -206,18 +300,50 @@ int main(void)
     AssertNear(duty_a, 50.0f, 0.02f);
     AssertNear(duty_b, 50.0f, 0.02f);
 
-    /* Modulation is limited to one even if the requested RMS is unreachable. */
+    /*
+     * Unreachable RMS requests retain a sinusoidal reference while reserving
+     * dead time plus one minimum effective pulse at both compare limits.
+     */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
     SetRunCommand(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
-    for (i = 0u; i < 100u; i++)
+    min_duty = 100.0f;
+    max_duty = 0.0f;
+    for (i = 0u; i < 400u; i++)
     {
         ControlModel_GetOpenLoopDuty(100.0f, 36.0f, &duty_a, &duty_b);
+        compare_a = (uint16_t)((float)APP_PWM_TBPRD_COUNTS *
+            duty_a * 0.01f);
+        compare_b = (uint16_t)((float)APP_PWM_TBPRD_COUNTS *
+            duty_b * 0.01f);
+        assert(compare_a >= APP_PWM_MIN_COMPARE_COUNTS);
+        assert(compare_a <=
+            (APP_PWM_TBPRD_COUNTS - APP_PWM_MIN_COMPARE_COUNTS));
+        assert(compare_b >= APP_PWM_MIN_COMPARE_COUNTS);
+        assert(compare_b <=
+            (APP_PWM_TBPRD_COUNTS - APP_PWM_MIN_COMPARE_COUNTS));
+        AssertNear(duty_a + duty_b, 100.0f, 0.01f);
+        if (duty_a < min_duty)
+        {
+            min_duty = duty_a;
+        }
+        if (duty_a > max_duty)
+        {
+            max_duty = duty_a;
+        }
     }
-    ControlModel_GetOpenLoopDuty(100.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 100.0f, 0.02f);
-    AssertNear(duty_b, 0.0f, 0.02f);
+    AssertNear(min_duty, 1.6f, 0.02f);
+    AssertNear(max_duty, 98.4f, 0.02f);
+
+    SetRunCommand(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    ControlModel_GetOpenLoopDuty(NAN, 36.0f, &duty_a, &duty_b);
+    AssertNear(duty_a, 50.0f, 0.0f);
+    AssertNear(duty_b, 50.0f, 0.0f);
+    ControlModel_GetOpenLoopDuty(20.0f, NAN, &duty_a, &duty_b);
+    AssertNear(duty_a, 50.0f, 0.0f);
+    AssertNear(duty_b, 50.0f, 0.0f);
 
     /* Invalid modes never release PWM and never replace the active mode. */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
@@ -229,6 +355,9 @@ int main(void)
 
     HMI_Param_Init();
     HMI_Menu_Init();
+    HMI_Param_SetVref(100.0f);
+    AssertNear(HMI_Param_GetVref(), APP_VREF_MAX, 0.00001f);
+    HMI_Param_SetVref(APP_VREF_DEFAULT);
     HMI_Param_SetFaultCode(FAULT_UVLO);
     HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
     assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_SET_VREF);
@@ -254,6 +383,8 @@ int main(void)
 
     HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
     assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_ADC_CAL);
+    AssertNear(APP_ADC_CAL_VOUT_B_DEFAULT, 1.643f, 0.00001f);
+    AssertNear(APP_ADC_CAL_IOUT_B_DEFAULT, 1.643f, 0.00001f);
     AssertNear(HMI_Param_GetVoutAdcB(), APP_ADC_CAL_VOUT_B_DEFAULT, 0.00001f);
     AssertNear(HMI_Param_GetVoutAdcK(), APP_ADC_CAL_VOUT_K_DEFAULT, 0.00001f);
     initial_calibration = HMI_Param_GetVoutAdcB();

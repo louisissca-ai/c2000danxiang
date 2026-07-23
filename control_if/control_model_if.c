@@ -14,9 +14,14 @@
 #define CONTROL_MODEL_SQRT2           1.4142135623730951f
 #define CONTROL_MODEL_TWO_PI          6.2831853071795865f
 #define CONTROL_MODEL_RMS_SAMPLES     400u
+#define CONTROL_MODEL_RMS_GAIN        0.10f
+#define CONTROL_MODEL_RMS_MAX_STEP    0.25f
 
 static float g_control_model_vref_ramp;
 static float g_control_model_open_loop_phase;
+static float g_control_model_running_vout_square_sum;
+static float g_control_model_running_vout_rms;
+static float g_control_model_rms_reference_correction;
 static float g_control_model_vout_square_sum;
 static float g_control_model_iout_square_sum;
 static float g_control_model_stopped_vout_rms;
@@ -24,6 +29,7 @@ static float g_control_model_stopped_iout_rms;
 static uint16_t g_control_model_fault_code;
 static uint16_t g_control_model_pwm_allowed;
 static uint16_t g_control_model_active_mode;
+static uint16_t g_control_model_running_rms_sample_count;
 static uint16_t g_control_model_rms_sample_count;
 
 #if APP_SOFTWARE_OCP_ENABLED
@@ -55,11 +61,20 @@ static void ControlModel_ResetStoppedFeedback(void)
     g_control_model_rms_sample_count = 0u;
 }
 
+static void ControlModel_ResetRunningRms(void)
+{
+    g_control_model_running_vout_square_sum = 0.0f;
+    g_control_model_running_vout_rms = 0.0f;
+    g_control_model_rms_reference_correction = 0.0f;
+    g_control_model_running_rms_sample_count = 0u;
+}
+
 static void ControlModel_DisablePwm(void)
 {
     if (g_control_model_pwm_allowed != APP_FALSE)
     {
         ControlModel_ResetStoppedFeedback();
+        ControlModel_ResetRunningRms();
     }
 
     BoardPWM_ForceSafe();
@@ -75,6 +90,7 @@ void ControlModel_Init(void)
     g_control_model_vref_ramp = 0.0f;
     g_control_model_open_loop_phase = 0.0f;
     ControlModel_ResetStoppedFeedback();
+    ControlModel_ResetRunningRms();
     g_control_model_fault_code = FAULT_NONE;
     g_control_model_pwm_allowed = APP_FALSE;
     g_control_model_active_mode = APP_CONTROL_MODE_CLOSED_LOOP;
@@ -225,6 +241,73 @@ float ControlModel_GetVrefRamp(void)
     return g_control_model_vref_ramp;
 }
 
+float ControlModel_UpdateVoutRmsReference(float vref_rms,
+    float vout_sample, uint16_t regulate)
+{
+    float correction_step;
+    float reference;
+
+    if ((ControlModel_IsFiniteReasonable(vref_rms) == APP_FALSE) ||
+        (ControlModel_IsFiniteReasonable(vout_sample) == APP_FALSE))
+    {
+        ControlModel_ResetRunningRms();
+        return 0.0f;
+    }
+
+    g_control_model_running_vout_square_sum += vout_sample * vout_sample;
+    g_control_model_running_rms_sample_count++;
+    if (g_control_model_running_rms_sample_count >=
+        CONTROL_MODEL_RMS_SAMPLES)
+    {
+        g_control_model_running_vout_rms = sqrtf(
+            g_control_model_running_vout_square_sum /
+            (float)CONTROL_MODEL_RMS_SAMPLES);
+        g_control_model_running_vout_square_sum = 0.0f;
+        g_control_model_running_rms_sample_count = 0u;
+
+        if (regulate != APP_FALSE)
+        {
+            correction_step = CONTROL_MODEL_RMS_GAIN *
+                (vref_rms - g_control_model_running_vout_rms);
+            if (correction_step > CONTROL_MODEL_RMS_MAX_STEP)
+            {
+                correction_step = CONTROL_MODEL_RMS_MAX_STEP;
+            }
+            else if (correction_step < -CONTROL_MODEL_RMS_MAX_STEP)
+            {
+                correction_step = -CONTROL_MODEL_RMS_MAX_STEP;
+            }
+            g_control_model_rms_reference_correction += correction_step;
+        }
+    }
+
+    if (regulate == APP_FALSE)
+    {
+        g_control_model_rms_reference_correction = 0.0f;
+    }
+
+    reference = vref_rms + g_control_model_rms_reference_correction;
+    if (reference < APP_VREF_MIN)
+    {
+        reference = APP_VREF_MIN;
+        g_control_model_rms_reference_correction =
+            APP_VREF_MIN - vref_rms;
+    }
+    else if (reference > APP_VREF_MAX)
+    {
+        reference = APP_VREF_MAX;
+        g_control_model_rms_reference_correction =
+            APP_VREF_MAX - vref_rms;
+    }
+
+    return reference;
+}
+
+float ControlModel_GetRunningVoutRms(void)
+{
+    return g_control_model_running_vout_rms;
+}
+
 void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
     float *duty_a_percent, float *duty_b_percent)
 {
@@ -242,9 +325,9 @@ void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
         (vref_rms > 0.0f) && (vbus > 0.0f))
     {
         modulation = CONTROL_MODEL_SQRT2 * vref_rms / vbus;
-        if (modulation > 1.0f)
+        if (modulation > APP_PWM_MAX_MODULATION)
         {
-            modulation = 1.0f;
+            modulation = APP_PWM_MAX_MODULATION;
         }
     }
 
@@ -261,6 +344,24 @@ void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
             g_control_model_open_loop_phase -= CONTROL_MODEL_TWO_PI;
         }
     }
+}
+
+uint16_t ControlModel_ClampPwmCompare(uint16_t period, uint16_t compare)
+{
+    uint16_t maximum;
+
+    if (period <= (2u * APP_PWM_MIN_COMPARE_COUNTS))
+    {
+        return period / 2u;
+    }
+
+    maximum = period - APP_PWM_MIN_COMPARE_COUNTS;
+    if (compare < APP_PWM_MIN_COMPARE_COUNTS)
+    {
+        return APP_PWM_MIN_COMPARE_COUNTS;
+    }
+
+    return (compare > maximum) ? maximum : compare;
 }
 
 void ControlModel_UpdateStoppedFeedback(float vin, float vout_sample,

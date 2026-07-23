@@ -21,6 +21,7 @@
 #include <math.h>
 #include "rtwtypes.h"
 #include "xtq2_dq_doubleloop_fullspec_private.h"
+#include "app_config.h"
 
 /* One-pole LPF, Fs = 20 kHz and -3 dB cutoff = 2 kHz. */
 #define VOUT_INPUT_LPF_ALPHA (0.4558867801)
@@ -55,6 +56,7 @@ void xtq2_dq_doubleloop_fullspec_step(void)
   real_T Capacitorcurrentestimator_tmp;
   real_T Dampinghighpass_tmp;
   real_T rtb_CastToDouble1;
+  real_T rtb_ActuatorSaturationError;
   real_T rtb_Gain6;
   real_T rtb_Normalizedmodulationm;
   real_T rtb_Saturation;
@@ -71,6 +73,7 @@ void xtq2_dq_doubleloop_fullspec_step(void)
   real_T rtb_qcurrenterror;
   real_T rtb_qerror;
   real_T rtb_sintheta;
+  real_T rtb_UnlimitedVoltageCommand;
 
   /* Sum: '<Root>/d error' incorporates:
    *  Constant: '<Root>/Vd reference'
@@ -248,12 +251,21 @@ void xtq2_dq_doubleloop_fullspec_step(void)
      xtq2_dq_doubleloop_fullspec_DW.Dampinghighpass_states) *
     xtq2_dq_doubleloop_fullspec_P.Kad;
 
-  /* Saturate: '<Root>/Modulation limit' */
-  if (rtb_Normalizedmodulationm > xtq2_dq_doubleloop_fullspec_P.Vin) {
-    rtb_Normalizedmodulationm = xtq2_dq_doubleloop_fullspec_P.Vin;
-  } else if (rtb_Normalizedmodulationm < -xtq2_dq_doubleloop_fullspec_P.Vin) {
-    rtb_Normalizedmodulationm = -xtq2_dq_doubleloop_fullspec_P.Vin;
+  /*
+   * ponytail: this generated source is patched because the .slx is absent.
+   * Keep the actuator limit below the dead-time/minimum-pulse boundary and
+   * feed the lost voltage back into the inner PI anti-windup path.
+   */
+  rtb_UnlimitedVoltageCommand = rtb_Normalizedmodulationm;
+  rtb_CastToDouble1 = xtq2_dq_doubleloop_fullspec_P.Vin *
+    APP_PWM_MAX_MODULATION;
+  if (rtb_Normalizedmodulationm > rtb_CastToDouble1) {
+    rtb_Normalizedmodulationm = rtb_CastToDouble1;
+  } else if (rtb_Normalizedmodulationm < -rtb_CastToDouble1) {
+    rtb_Normalizedmodulationm = -rtb_CastToDouble1;
   }
+  rtb_ActuatorSaturationError = rtb_Normalizedmodulationm -
+    rtb_UnlimitedVoltageCommand;
 
   /* Gain: '<Root>/Normalized modulation m' incorporates:
    *  Saturate: '<Root>/Modulation limit'
@@ -348,6 +360,7 @@ void xtq2_dq_doubleloop_fullspec_step(void)
    */
   xtq2_dq_doubleloop_fullspec_DW.Integrator_DSTATE_h += ((rtb_Saturation_a -
     rtb_Sum_j) * xtq2_dq_doubleloop_fullspec_P.daxisCurrentPIz_Kb +
+    rtb_ActuatorSaturationError * rtb_sintheta +
     xtq2_dq_doubleloop_fullspec_P.Ki_i_dq * rtb_dcurrenterror) *
     xtq2_dq_doubleloop_fullspec_P.Integrator_gainval_a;
 
@@ -395,6 +408,7 @@ void xtq2_dq_doubleloop_fullspec_step(void)
    */
   xtq2_dq_doubleloop_fullspec_DW.Integrator_DSTATE_i += ((rtb_Saturation_d -
     rtb_Sum_g) * xtq2_dq_doubleloop_fullspec_P.qaxisCurrentPIz_Kb +
+    rtb_ActuatorSaturationError * rtb_costheta +
     xtq2_dq_doubleloop_fullspec_P.Ki_i_dq * rtb_qcurrenterror) *
     xtq2_dq_doubleloop_fullspec_P.Integrator_gainval_d;
 
