@@ -99,10 +99,44 @@ static void HMI_Display_ShowEnable(const HMI_Data_t *data)
 static void HMI_Display_ShowMode(const HMI_Data_t *data)
 {
     OLED_ShowString(0u, 0u, "Set Mode");
-    OLED_ShowString(0u, 2u, "Mode:");
-    OLED_ShowInt(48u, 2u, (int32_t)data->mode_cmd);
+    OLED_ShowString(0u, 2u, (data->mode_cmd == APP_CONTROL_MODE_OPEN_LOOP) ?
+        "OPEN LOOP" : "CLOSED LOOP");
     OLED_ShowString(0u, 5u, "UP/DOWN Change");
-    OLED_ShowString(0u, 7u, "OK Next");
+    OLED_ShowString(0u, 7u, "Change Stops PWM");
+}
+
+static void HMI_Display_ShowAdcCalibration(const HMI_Data_t *data,
+    uint16_t edit_index)
+{
+    const char *field;
+    float value;
+
+    switch (edit_index)
+    {
+    case 0u:
+        field = "V b";
+        value = data->vout_adc_b;
+        break;
+    case 1u:
+        field = "V k";
+        value = data->vout_adc_k;
+        break;
+    case 2u:
+        field = "I b";
+        value = data->iout_adc_b;
+        break;
+    default:
+        field = "I k";
+        value = data->iout_adc_k;
+        break;
+    }
+
+    OLED_ShowString(0u, 0u, "ADC Cal");
+    OLED_ShowString(0u, 2u, field);
+    OLED_ShowString(28u, 2u, "=");
+    OLED_ShowFloat(42u, 2u, value, 3u);
+    OLED_ShowString(0u, 5u, "Up .001 Long .1");
+    OLED_ShowString(0u, 7u, "OK Field R Next");
 }
 
 static void HMI_Display_ShowFault(const HMI_Data_t *data)
@@ -161,6 +195,10 @@ void HMI_Display_Task_100ms(void)
 
     case HMI_MENU_PAGE_SET_MODE:
         HMI_Display_ShowMode(&data);
+        break;
+
+    case HMI_MENU_PAGE_ADC_CAL:
+        HMI_Display_ShowAdcCalibration(&data, HMI_Menu_GetEditIndex());
         break;
 
     case HMI_MENU_PAGE_FAULT:

@@ -27,4 +27,10 @@ typedef enum
     APP_RUN_STATE_FAULT
 } APP_RunState_t;
 
+typedef enum
+{
+    APP_CONTROL_MODE_CLOSED_LOOP = 0,
+    APP_CONTROL_MODE_OPEN_LOOP
+} APP_ControlMode_t;
+
 #endif

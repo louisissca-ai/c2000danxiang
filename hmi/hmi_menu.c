@@ -22,6 +22,7 @@ static void HMI_Menu_NextPage(void)
     {
         g_hmi_menu_page = (HMI_MenuPage_t)((uint16_t)g_hmi_menu_page + 1u);
     }
+    g_hmi_menu_edit_index = 0u;
 }
 
 static void HMI_Menu_PreviousPage(void)
@@ -34,6 +35,7 @@ static void HMI_Menu_PreviousPage(void)
     {
         g_hmi_menu_page = (HMI_MenuPage_t)((uint16_t)g_hmi_menu_page - 1u);
     }
+    g_hmi_menu_edit_index = 0u;
 }
 
 static void HMI_Menu_AdjustCurrent(int16_t step)
@@ -59,15 +61,32 @@ static void HMI_Menu_AdjustCurrent(int16_t step)
 
     case HMI_MENU_PAGE_SET_MODE:
         mode_cmd = HMI_Param_GetModeCmd();
-        if (step > 0)
+        if (step != 0)
         {
-            mode_cmd = (uint16_t)((mode_cmd + 1u) & 0x0003u);
+            mode_cmd = (mode_cmd == APP_CONTROL_MODE_CLOSED_LOOP) ?
+                APP_CONTROL_MODE_OPEN_LOOP : APP_CONTROL_MODE_CLOSED_LOOP;
+            HMI_Param_SetEnableCmd(APP_FALSE);
+            HMI_Param_SetModeCmd(mode_cmd);
         }
-        else if (step < 0)
+        break;
+
+    case HMI_MENU_PAGE_ADC_CAL:
+        if (g_hmi_menu_edit_index == 0u)
         {
-            mode_cmd = (uint16_t)((mode_cmd - 1u) & 0x0003u);
+            HMI_Param_AdjustVoutAdcB(0.001f * small_step);
         }
-        HMI_Param_SetModeCmd(mode_cmd);
+        else if (g_hmi_menu_edit_index == 1u)
+        {
+            HMI_Param_AdjustVoutAdcK(0.001f * small_step);
+        }
+        else if (g_hmi_menu_edit_index == 2u)
+        {
+            HMI_Param_AdjustIoutAdcB(0.001f * small_step);
+        }
+        else
+        {
+            HMI_Param_AdjustIoutAdcK(0.001f * small_step);
+        }
         break;
 
     default:
@@ -120,11 +139,11 @@ void HMI_Menu_Task_20ms(KeyEvent_t event)
         break;
 
     case KEY_EVENT_LONG_UP:
-        HMI_Menu_AdjustCurrent(10);
+        HMI_Menu_AdjustCurrent((g_hmi_menu_page == HMI_MENU_PAGE_ADC_CAL) ? 100 : 10);
         break;
 
     case KEY_EVENT_LONG_DOWN:
-        HMI_Menu_AdjustCurrent(-10);
+        HMI_Menu_AdjustCurrent((g_hmi_menu_page == HMI_MENU_PAGE_ADC_CAL) ? -100 : -10);
         break;
 
     case KEY_EVENT_LEFT:
@@ -132,8 +151,18 @@ void HMI_Menu_Task_20ms(KeyEvent_t event)
         break;
 
     case KEY_EVENT_RIGHT:
-    case KEY_EVENT_OK:
         HMI_Menu_NextPage();
+        break;
+
+    case KEY_EVENT_OK:
+        if (g_hmi_menu_page == HMI_MENU_PAGE_ADC_CAL)
+        {
+            g_hmi_menu_edit_index = (g_hmi_menu_edit_index + 1u) % 4u;
+        }
+        else
+        {
+            HMI_Menu_NextPage();
+        }
         break;
 
     case KEY_EVENT_BACK:

@@ -21,6 +21,10 @@ typedef struct
     float vout;
     float iout;
     float duty;
+    float vout_adc_b;
+    float vout_adc_k;
+    float iout_adc_b;
+    float iout_adc_k;
     uint16_t enable_cmd;
     uint16_t mode_cmd;
     uint16_t run_state;
@@ -32,6 +36,10 @@ void HMI_Param_GetData(HMI_Data_t *data);
 
 float HMI_Param_GetVref(void);
 float HMI_Param_GetIref(void);
+float HMI_Param_GetVoutAdcB(void);
+float HMI_Param_GetVoutAdcK(void);
+float HMI_Param_GetIoutAdcB(void);
+float HMI_Param_GetIoutAdcK(void);
 uint16_t HMI_Param_GetEnableCmd(void);
 uint16_t HMI_Param_GetModeCmd(void);
 uint16_t HMI_Param_GetFaultCode(void);
@@ -40,7 +48,12 @@ void HMI_Param_SetVref(float value);
 void HMI_Param_SetIref(float value);
 void HMI_Param_AdjustVref(float delta);
 void HMI_Param_AdjustIref(float delta);
+void HMI_Param_AdjustVoutAdcB(float delta);
+void HMI_Param_AdjustVoutAdcK(float delta);
+void HMI_Param_AdjustIoutAdcB(float delta);
+void HMI_Param_AdjustIoutAdcK(float delta);
 void HMI_Param_ToggleEnable(void);
+void HMI_Param_SetEnableCmd(uint16_t enable);
 void HMI_Param_SetModeCmd(uint16_t mode);
 
 void HMI_Param_SetVin(float value);

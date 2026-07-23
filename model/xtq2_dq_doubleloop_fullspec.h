@@ -54,6 +54,7 @@ typedef struct {
 
 /* Block states (default storage) for system '<Root>' */
 typedef struct {
+  real_T VoutInputLPF_state;           /* '<Root>/Vout input LPF (2 kHz)' */
   real_T VdLPF_states;                 /* '<Root>/Vd LPF' */
   real_T Integrator_DSTATE;            /* '<S88>/Integrator' */
   real_T IdLPF_states;                 /* '<Root>/Id LPF' */
@@ -202,10 +203,10 @@ struct P_xtq2_dq_doubleloop_fullspec_T_ {
   real_T Gain11_Gain;                  /* Expression: 3.3/4095
                                         * Referenced by: '<Root>/Gain11'
                                         */
-  real_T Constant5_Value;              /* Expression: -1.686
+  real_T Constant5_Value;              /* Expression: -1.608
                                         * Referenced by: '<Root>/Constant5'
                                         */
-  real_T Gain6_Gain;                   /* Expression: 1/0.019463
+  real_T Gain6_Gain;                   /* Expression: 51.37954
                                         * Referenced by: '<Root>/Gain6'
                                         */
   real_T Capacitorcurrentestimator_NumCo[2];
@@ -236,10 +237,10 @@ struct P_xtq2_dq_doubleloop_fullspec_T_ {
   real_T Gain1_Gain;                   /* Expression: 3.3/4095
                                         * Referenced by: '<Root>/Gain1'
                                         */
-  real_T Constant1_Value;              /* Expression: -1.686
+  real_T Constant1_Value;              /* Expression: -1.606
                                         * Referenced by: '<Root>/Constant1'
                                         */
-  real_T Gain4_Gain;                   /* Expression: 1/0.019463
+  real_T Gain4_Gain;                   /* Expression: 3.33333
                                         * Referenced by: '<Root>/Gain4'
                                         */
   real_T Current90degdelayTs_InitialCond;/* Expression: 0

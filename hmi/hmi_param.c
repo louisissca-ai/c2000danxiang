@@ -40,6 +40,10 @@ void HMI_Param_Init(void)
     g_hmi_param_data.vout = 0.0f;
     g_hmi_param_data.iout = 0.0f;
     g_hmi_param_data.duty = 0.0f;
+    g_hmi_param_data.vout_adc_b = APP_ADC_CAL_VOUT_B_DEFAULT;
+    g_hmi_param_data.vout_adc_k = APP_ADC_CAL_VOUT_K_DEFAULT;
+    g_hmi_param_data.iout_adc_b = APP_ADC_CAL_IOUT_B_DEFAULT;
+    g_hmi_param_data.iout_adc_k = APP_ADC_CAL_IOUT_K_DEFAULT;
     g_hmi_param_data.enable_cmd = APP_FALSE;
     g_hmi_param_data.mode_cmd = 0u;
     g_hmi_param_data.run_state = APP_RUN_STATE_STOP;
@@ -62,6 +66,26 @@ float HMI_Param_GetVref(void)
 float HMI_Param_GetIref(void)
 {
     return g_hmi_param_data.iref;
+}
+
+float HMI_Param_GetVoutAdcB(void)
+{
+    return g_hmi_param_data.vout_adc_b;
+}
+
+float HMI_Param_GetVoutAdcK(void)
+{
+    return g_hmi_param_data.vout_adc_k;
+}
+
+float HMI_Param_GetIoutAdcB(void)
+{
+    return g_hmi_param_data.iout_adc_b;
+}
+
+float HMI_Param_GetIoutAdcK(void)
+{
+    return g_hmi_param_data.iout_adc_k;
 }
 
 uint16_t HMI_Param_GetEnableCmd(void)
@@ -99,14 +123,57 @@ void HMI_Param_AdjustIref(float delta)
     HMI_Param_SetIref(g_hmi_param_data.iref + delta);
 }
 
+static void HMI_Param_StopForAdcCalibration(void)
+{
+    g_hmi_param_data.enable_cmd = APP_FALSE;
+}
+
+void HMI_Param_AdjustVoutAdcB(float delta)
+{
+    g_hmi_param_data.vout_adc_b = HMI_Param_Clamp(
+        g_hmi_param_data.vout_adc_b + delta, APP_ADC_CAL_B_MIN,
+        APP_ADC_CAL_B_MAX);
+    HMI_Param_StopForAdcCalibration();
+}
+
+void HMI_Param_AdjustVoutAdcK(float delta)
+{
+    g_hmi_param_data.vout_adc_k = HMI_Param_Clamp(
+        g_hmi_param_data.vout_adc_k + delta, APP_ADC_CAL_K_MIN,
+        APP_ADC_CAL_K_MAX);
+    HMI_Param_StopForAdcCalibration();
+}
+
+void HMI_Param_AdjustIoutAdcB(float delta)
+{
+    g_hmi_param_data.iout_adc_b = HMI_Param_Clamp(
+        g_hmi_param_data.iout_adc_b + delta, APP_ADC_CAL_B_MIN,
+        APP_ADC_CAL_B_MAX);
+    HMI_Param_StopForAdcCalibration();
+}
+
+void HMI_Param_AdjustIoutAdcK(float delta)
+{
+    g_hmi_param_data.iout_adc_k = HMI_Param_Clamp(
+        g_hmi_param_data.iout_adc_k + delta, APP_ADC_CAL_K_MIN,
+        APP_ADC_CAL_K_MAX);
+    HMI_Param_StopForAdcCalibration();
+}
+
 void HMI_Param_ToggleEnable(void)
 {
     g_hmi_param_data.enable_cmd = (g_hmi_param_data.enable_cmd == 0u) ? 1u : 0u;
 }
 
+void HMI_Param_SetEnableCmd(uint16_t enable)
+{
+    g_hmi_param_data.enable_cmd = (enable != 0u) ? APP_TRUE : APP_FALSE;
+}
+
 void HMI_Param_SetModeCmd(uint16_t mode)
 {
-    g_hmi_param_data.mode_cmd = mode;
+    g_hmi_param_data.mode_cmd = (mode == APP_CONTROL_MODE_OPEN_LOOP) ?
+        APP_CONTROL_MODE_OPEN_LOOP : APP_CONTROL_MODE_CLOSED_LOOP;
 }
 
 void HMI_Param_SetVin(float value)

@@ -220,15 +220,15 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    */
   0.00080586080586080586,
 
-  /* Expression: -1.686
+  /* Expression: -1.608
    * Referenced by: '<Root>/Constant5'
    */
-  -1.686,
+  -1.608,
 
-  /* Expression: 1/0.019463
+  /* Expression: 51.37954
    * Referenced by: '<Root>/Gain6'
    */
-  51.379540666906436,
+  51.37954,
 
   /* Expression: [Cfilter*(2*pi*Fad)*(2/Ts)/((2/Ts)+(2*pi*Fad)),-Cfilter*(2*pi*Fad)*(2/Ts)/((2/Ts)+(2*pi*Fad))]
    * Referenced by: '<Root>/Capacitor current estimator'
@@ -270,15 +270,15 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    */
   0.00080586080586080586,
 
-  /* Expression: -1.686
+  /* Expression: -1.606
    * Referenced by: '<Root>/Constant1'
    */
-  -1.686,
+  -1.606,
 
-  /* Expression: 1/0.019463
+  /* Expression: 3.33333
    * Referenced by: '<Root>/Gain4'
    */
-  51.379540666906436,
+  3.33333,
 
   /* Expression: 0
    * Referenced by: '<Root>/Current 90 deg delay (Ts)'

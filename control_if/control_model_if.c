@@ -1,5 +1,7 @@
 #include "control_model_if.h"
 
+#include <math.h>
+
 #include "app_config.h"
 #include "app_main.h"
 #include "app_types.h"
@@ -9,15 +11,27 @@
 #define CONTROL_MODEL_STEP_S          50.0e-6f
 #define CONTROL_MODEL_VREF_RATE       72.0f
 #define CONTROL_MODEL_ABS_VALID_LIMIT 1000000.0f
+#define CONTROL_MODEL_SQRT2           1.4142135623730951f
+#define CONTROL_MODEL_TWO_PI          6.2831853071795865f
+#define CONTROL_MODEL_RMS_SAMPLES     400u
 
 static float g_control_model_vref_ramp;
+static float g_control_model_open_loop_phase;
+static float g_control_model_vout_square_sum;
+static float g_control_model_iout_square_sum;
+static float g_control_model_stopped_vout_rms;
+static float g_control_model_stopped_iout_rms;
 static uint16_t g_control_model_fault_code;
 static uint16_t g_control_model_pwm_allowed;
+static uint16_t g_control_model_active_mode;
+static uint16_t g_control_model_rms_sample_count;
 
+#if APP_SOFTWARE_OCP_ENABLED
 static float ControlModel_Abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
+#endif
 
 static uint16_t ControlModel_IsFiniteReasonable(float value)
 {
@@ -26,13 +40,44 @@ static uint16_t ControlModel_IsFiniteReasonable(float value)
             (value > -CONTROL_MODEL_ABS_VALID_LIMIT)) ? APP_TRUE : APP_FALSE;
 }
 
+static uint16_t ControlModel_IsModeValid(uint16_t mode)
+{
+    return ((mode == APP_CONTROL_MODE_CLOSED_LOOP) ||
+            (mode == APP_CONTROL_MODE_OPEN_LOOP)) ? APP_TRUE : APP_FALSE;
+}
+
+static void ControlModel_ResetStoppedFeedback(void)
+{
+    g_control_model_vout_square_sum = 0.0f;
+    g_control_model_iout_square_sum = 0.0f;
+    g_control_model_stopped_vout_rms = 0.0f;
+    g_control_model_stopped_iout_rms = 0.0f;
+    g_control_model_rms_sample_count = 0u;
+}
+
+static void ControlModel_DisablePwm(void)
+{
+    if (g_control_model_pwm_allowed != APP_FALSE)
+    {
+        ControlModel_ResetStoppedFeedback();
+    }
+
+    BoardPWM_ForceSafe();
+    g_control_model_pwm_allowed = APP_FALSE;
+    g_control_model_vref_ramp = 0.0f;
+    g_control_model_open_loop_phase = 0.0f;
+}
+
 void ControlModel_Init(void)
 {
     BoardPWM_ForceSafe();
     APP_Init();
     g_control_model_vref_ramp = 0.0f;
+    g_control_model_open_loop_phase = 0.0f;
+    ControlModel_ResetStoppedFeedback();
     g_control_model_fault_code = FAULT_NONE;
     g_control_model_pwm_allowed = APP_FALSE;
+    g_control_model_active_mode = APP_CONTROL_MODE_CLOSED_LOOP;
 }
 
 void ControlModel_Task1ms(void)
@@ -44,19 +89,35 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
 {
     Control_Setpoint_t setpoint;
     uint16_t current_fault;
+#if APP_SOFTWARE_OCP_ENABLED
     float current_magnitude;
+#endif
 
     ControlIF_GetSetpoint(&setpoint);
+
+    if (ControlModel_IsModeValid(setpoint.mode_cmd) == APP_FALSE)
+    {
+        ControlModel_DisablePwm();
+        return APP_FALSE;
+    }
 
     if (setpoint.enable_cmd == APP_FALSE)
     {
         g_control_model_fault_code = FAULT_NONE;
-        BoardPWM_ForceSafe();
-        g_control_model_pwm_allowed = APP_FALSE;
+        ControlModel_DisablePwm();
+        g_control_model_active_mode = setpoint.mode_cmd;
         return APP_FALSE;
     }
 
+    if (setpoint.mode_cmd != g_control_model_active_mode)
+    {
+        ControlModel_DisablePwm();
+        return APP_FALSE;
+    }
+
+#if APP_SOFTWARE_OCP_ENABLED
     current_magnitude = ControlModel_Abs(iout);
+#endif
 
     if ((ControlModel_IsFiniteReasonable(vbus) == APP_FALSE) ||
         (ControlModel_IsFiniteReasonable(iout) == APP_FALSE) ||
@@ -64,18 +125,12 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
     {
         current_fault = FAULT_ADC;
     }
-    else if (vbus < APP_VBUS_MIN_VALID)
-    {
-        current_fault = FAULT_UVLO;
-    }
-    else if (vbus > APP_VBUS_MAX_VALID)
-    {
-        current_fault = FAULT_OVP;
-    }
+#if APP_SOFTWARE_OCP_ENABLED
     else if (current_magnitude > setpoint.iref)
     {
         current_fault = FAULT_OCP;
     }
+#endif
     else
     {
         current_fault = FAULT_NONE;
@@ -92,12 +147,14 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
         {
             g_control_model_fault_code = FAULT_NONE;
         }
-        BoardPWM_ForceSafe();
-        g_control_model_pwm_allowed = APP_FALSE;
+        ControlModel_DisablePwm();
         return APP_FALSE;
     }
 
-    BoardPWM_Release();
+    if (g_control_model_pwm_allowed == APP_FALSE)
+    {
+        ControlModel_ResetStoppedFeedback();
+    }
     g_control_model_pwm_allowed = APP_TRUE;
 
     return g_control_model_pwm_allowed;
@@ -118,6 +175,11 @@ uint16_t ControlModel_GetFaultCode(void)
     return g_control_model_fault_code;
 }
 
+uint16_t ControlModel_GetActiveMode(void)
+{
+    return g_control_model_active_mode;
+}
+
 void ControlModel_TripFault(uint16_t fault_code)
 {
     if ((fault_code != FAULT_NONE) &&
@@ -126,8 +188,7 @@ void ControlModel_TripFault(uint16_t fault_code)
         g_control_model_fault_code = fault_code;
     }
 
-    BoardPWM_ForceSafe();
-    g_control_model_pwm_allowed = APP_FALSE;
+    ControlModel_DisablePwm();
 }
 
 float ControlModel_GetVrefRamp(void)
@@ -162,6 +223,76 @@ float ControlModel_GetVrefRamp(void)
     }
 
     return g_control_model_vref_ramp;
+}
+
+void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
+    float *duty_a_percent, float *duty_b_percent)
+{
+    float modulation;
+    float sine_value;
+
+    if ((duty_a_percent == 0) || (duty_b_percent == 0))
+    {
+        return;
+    }
+
+    modulation = 0.0f;
+    if ((ControlModel_IsFiniteReasonable(vref_rms) != APP_FALSE) &&
+        (ControlModel_IsFiniteReasonable(vbus) != APP_FALSE) &&
+        (vref_rms > 0.0f) && (vbus > 0.0f))
+    {
+        modulation = CONTROL_MODEL_SQRT2 * vref_rms / vbus;
+        if (modulation > 1.0f)
+        {
+            modulation = 1.0f;
+        }
+    }
+
+    sine_value = sinf(g_control_model_open_loop_phase);
+    *duty_a_percent = 50.0f * (1.0f + modulation * sine_value);
+    *duty_b_percent = 50.0f * (1.0f - modulation * sine_value);
+
+    if (g_control_model_pwm_allowed != APP_FALSE)
+    {
+        g_control_model_open_loop_phase += CONTROL_MODEL_TWO_PI *
+            APP_OUTPUT_FREQUENCY_HZ * CONTROL_MODEL_STEP_S;
+        if (g_control_model_open_loop_phase >= CONTROL_MODEL_TWO_PI)
+        {
+            g_control_model_open_loop_phase -= CONTROL_MODEL_TWO_PI;
+        }
+    }
+}
+
+void ControlModel_UpdateStoppedFeedback(float vin, float vout_sample,
+    float iout_sample)
+{
+    if ((ControlModel_IsFiniteReasonable(vout_sample) == APP_FALSE) ||
+        (ControlModel_IsFiniteReasonable(iout_sample) == APP_FALSE))
+    {
+        ControlModel_ResetStoppedFeedback();
+    }
+    else
+    {
+        g_control_model_vout_square_sum += vout_sample * vout_sample;
+        g_control_model_iout_square_sum += iout_sample * iout_sample;
+        g_control_model_rms_sample_count++;
+
+        if (g_control_model_rms_sample_count >= CONTROL_MODEL_RMS_SAMPLES)
+        {
+            g_control_model_stopped_vout_rms = sqrtf(
+                g_control_model_vout_square_sum /
+                (float)CONTROL_MODEL_RMS_SAMPLES);
+            g_control_model_stopped_iout_rms = sqrtf(
+                g_control_model_iout_square_sum /
+                (float)CONTROL_MODEL_RMS_SAMPLES);
+            g_control_model_vout_square_sum = 0.0f;
+            g_control_model_iout_square_sum = 0.0f;
+            g_control_model_rms_sample_count = 0u;
+        }
+    }
+
+    ControlModel_SetFeedback(vin, g_control_model_stopped_vout_rms,
+        g_control_model_stopped_iout_rms, 0.0f);
 }
 
 void ControlModel_SetFeedback(float vin, float vout, float iout, float duty)
