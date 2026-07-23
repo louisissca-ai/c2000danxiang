@@ -5,11 +5,11 @@
  *
  * File: rtwtypes.h
  *
- * Code generated for Simulink model 'chovy_tidy'.
+ * Code generated for Simulink model 'xtq2_dq_doubleloop_fullspec'.
  *
- * Model version                  : 1.38
+ * Model version                  : 1.31
  * Simulink Coder version         : 24.1 (R2024a) 19-Nov-2023
- * C/C++ source code generated on : Thu Jul 16 21:51:46 2026
+ * C/C++ source code generated on : Thu Jul 23 16:51:21 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: Texas Instruments->C2000

@@ -1,8 +1,8 @@
 #include "c2000BoardSupport.h"
 #include "MW_f280015x_includes.h"
 #include "rtwtypes.h"
-#include "chovy_tidy.h"
-#include "chovy_tidy_private.h"
+#include "xtq2_dq_doubleloop_fullspec.h"
+#include "xtq2_dq_doubleloop_fullspec_private.h"
 
 void config_ePWM_GPIO (void)
 {
@@ -19,12 +19,6 @@ void config_ePWM_GPIO (void)
   GpioCtrlRegs.GPAMUX1.bit.GPIO2 = 1U; /* Configure GPIOGPIO2 as EPWM2A*/
   GpioCtrlRegs.GPAGMUX1.bit.GPIO3 = 0U;
   GpioCtrlRegs.GPAMUX1.bit.GPIO3 = 1U; /* Configure GPIOGPIO3 as EPWM2B*/
-
-  /*-- Configure pin assignments for ePWM3 --*/
-  GpioCtrlRegs.GPAGMUX1.bit.GPIO4 = 0U;
-  GpioCtrlRegs.GPAMUX1.bit.GPIO4 = 1U; /* Configure GPIOGPIO4 as EPWM3A*/
-  GpioCtrlRegs.GPAGMUX1.bit.GPIO5 = 0U;
-  GpioCtrlRegs.GPAMUX1.bit.GPIO5 = 1U; /* Configure GPIOGPIO5 as EPWM3B*/
   EDIS;
 }
 
@@ -43,5 +37,4 @@ void config_ePWMSyncSource (void)
   /* Configuring ePWM Sync in source selection */
   EPwm1Regs.EPWMSYNCINSEL.bit.SEL = 0U;
   EPwm2Regs.EPWMSYNCINSEL.bit.SEL = 1U;
-  EPwm3Regs.EPWMSYNCINSEL.bit.SEL = 1U;
 }

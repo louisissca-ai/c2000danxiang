@@ -3,7 +3,7 @@
  * course requirements at degree granting institutions only.  Not for
  * government, commercial, or other organizational use.
  *
- * File: rtmodel.h
+ * File: xtq2_dq_doubleloop_fullspec_private.h
  *
  * Code generated for Simulink model 'xtq2_dq_doubleloop_fullspec'.
  *
@@ -17,15 +17,19 @@
  * Validation result: Not run
  */
 
-#ifndef rtmodel_h_
-#define rtmodel_h_
-#include "xtq2_dq_doubleloop_fullspec.h"
+#ifndef xtq2_dq_doubleloop_fullspec_private_h_
+#define xtq2_dq_doubleloop_fullspec_private_h_
+#include "rtwtypes.h"
+#include "xtq2_dq_doubleloop_fullspec_types.h"
 
-/* Macros generated for backwards compatibility  */
-#ifndef rtmGetStopRequested
-#define rtmGetStopRequested(rtm)       ((void*) 0)
-#endif
-#endif                                 /* rtmodel_h_ */
+void InitAdcA (void);
+void config_ADCA_SOC0 (void);
+void InitAdcC (void);
+void config_ADCC_SOC0 (void);
+extern uint16_T MW_adcAInitFlag;
+extern uint16_T MW_adcCInitFlag;
+
+#endif                              /* xtq2_dq_doubleloop_fullspec_private_h_ */
 
 /*
  * File trailer for generated code.

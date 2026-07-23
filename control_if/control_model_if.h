@@ -18,6 +18,7 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout);
 uint16_t ControlModel_IsPwmAllowed(float vbus);
 uint16_t ControlModel_IsControlEnabled(void);
 uint16_t ControlModel_GetFaultCode(void);
+void ControlModel_TripFault(uint16_t fault_code);
 float ControlModel_GetVrefRamp(void);
 void ControlModel_SetFeedback(float vin, float vout, float iout, float duty);
 

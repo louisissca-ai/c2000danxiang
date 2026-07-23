@@ -38,7 +38,7 @@ static void SetRunCommand(uint16_t enable_cmd)
 {
     Control_Setpoint_t setpoint;
 
-    setpoint.vref = 36.0f;
+    setpoint.vref = 20.0f;
     setpoint.iref = 2.0f;
     setpoint.enable_cmd = enable_cmd;
     setpoint.mode_cmd = 0u;
@@ -56,6 +56,14 @@ int main(void)
     assert(ControlModel_UpdateSafety(0.0f, 0.0f) == APP_FALSE);
     assert(ControlModel_GetFaultCode() == FAULT_NONE);
     assert(BoardPWM_IsReleased() == 0u);
+
+    ControlModel_TripFault(FAULT_PWM);
+    assert(ControlModel_GetFaultCode() == FAULT_PWM);
+    assert(BoardPWM_IsReleased() == 0u);
+
+    SetRunCommand(APP_FALSE);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    assert(ControlModel_GetFaultCode() == FAULT_NONE);
 
     SetRunCommand(APP_TRUE);
     assert(ControlModel_UpdateSafety(19.9f, 0.0f) == APP_FALSE);

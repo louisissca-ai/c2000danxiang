@@ -1,8 +1,8 @@
 #include "c2000BoardSupport.h"
 #include "MW_f280015x_includes.h"
 #include "rtwtypes.h"
-#include "chovy_tidy.h"
-#include "chovy_tidy_private.h"
+#include "xtq2_dq_doubleloop_fullspec.h"
+#include "xtq2_dq_doubleloop_fullspec_private.h"
 
 void enableExtInterrupt (void);
 void configureGPIOExtInterrupt(void);

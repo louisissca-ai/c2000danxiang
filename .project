@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-    <name>ccs</name>
-    <comment>Standalone CCS project generated from chovy_tidy plus reusable HMI platform</comment>
+    <name>single_phase_inverter</name>
+    <comment>F2800157 single-phase full-bridge inverter firmware</comment>
     <projects></projects>
     <buildSpec>
         <buildCommand>

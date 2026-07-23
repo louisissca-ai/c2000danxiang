@@ -3,7 +3,7 @@
  * course requirements at degree granting institutions only.  Not for
  * government, commercial, or other organizational use.
  *
- * File: rtmodel.h
+ * File: xtq2_dq_doubleloop_fullspec_types.h
  *
  * Code generated for Simulink model 'xtq2_dq_doubleloop_fullspec'.
  *
@@ -17,15 +17,16 @@
  * Validation result: Not run
  */
 
-#ifndef rtmodel_h_
-#define rtmodel_h_
-#include "xtq2_dq_doubleloop_fullspec.h"
+#ifndef xtq2_dq_doubleloop_fullspec_types_h_
+#define xtq2_dq_doubleloop_fullspec_types_h_
 
-/* Macros generated for backwards compatibility  */
-#ifndef rtmGetStopRequested
-#define rtmGetStopRequested(rtm)       ((void*) 0)
-#endif
-#endif                                 /* rtmodel_h_ */
+/* Parameters (default storage) */
+typedef struct P_xtq2_dq_doubleloop_fullspec_T_ P_xtq2_dq_doubleloop_fullspec_T;
+
+/* Forward declaration for rtModel */
+typedef struct tag_RTM_xtq2_dq_doubleloop_fu_T RT_MODEL_xtq2_dq_doubleloop_f_T;
+
+#endif                                /* xtq2_dq_doubleloop_fullspec_types_h_ */
 
 /*
  * File trailer for generated code.

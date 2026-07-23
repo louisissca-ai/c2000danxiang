@@ -8,18 +8,18 @@
  *       共享同一套安全参数范围。
  */
 
-#define APP_VREF_DEFAULT        36.0f
+#define APP_VREF_DEFAULT        20.0f
 #define APP_IREF_DEFAULT        2.0f
 
 #define APP_VREF_MIN            0.0f
-#define APP_VREF_MAX            48.0f
+#define APP_VREF_MAX            25.0f
 
 /* The control model's Vdc lookup table is calibrated for this input range. */
 #define APP_VBUS_MIN_VALID       20.0f
 #define APP_VBUS_MAX_VALID       80.0f
 
 #define APP_IREF_MIN            0.0f
-#define APP_IREF_MAX            10.0f
+#define APP_IREF_MAX            4.5f
 
 #define APP_HMI_TASK_1MS        1u
 #define APP_KEY_TASK_10MS       10u

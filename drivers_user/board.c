@@ -37,10 +37,8 @@ void BoardPWM_ForceSafe(void)
 #ifndef UNIT_TEST
     BoardPWM_ConfigureLowAction(EPWM1_BASE);
     BoardPWM_ConfigureLowAction(EPWM2_BASE);
-    BoardPWM_ConfigureLowAction(EPWM3_BASE);
     EPWM_forceTripZoneEvent(EPWM1_BASE, EPWM_TZ_FORCE_EVENT_OST);
     EPWM_forceTripZoneEvent(EPWM2_BASE, EPWM_TZ_FORCE_EVENT_OST);
-    EPWM_forceTripZoneEvent(EPWM3_BASE, EPWM_TZ_FORCE_EVENT_OST);
 #endif
     g_board_pwm_released = 0u;
 }
@@ -50,7 +48,6 @@ void BoardPWM_Release(void)
 #ifndef UNIT_TEST
     EPWM_clearTripZoneFlag(EPWM1_BASE, EPWM_TZ_FLAG_OST);
     EPWM_clearTripZoneFlag(EPWM2_BASE, EPWM_TZ_FLAG_OST);
-    EPWM_clearTripZoneFlag(EPWM3_BASE, EPWM_TZ_FLAG_OST);
 #endif
     g_board_pwm_released = 1u;
 }

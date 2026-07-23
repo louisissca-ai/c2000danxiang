@@ -118,6 +118,18 @@ uint16_t ControlModel_GetFaultCode(void)
     return g_control_model_fault_code;
 }
 
+void ControlModel_TripFault(uint16_t fault_code)
+{
+    if ((fault_code != FAULT_NONE) &&
+        (g_control_model_fault_code == FAULT_NONE))
+    {
+        g_control_model_fault_code = fault_code;
+    }
+
+    BoardPWM_ForceSafe();
+    g_control_model_pwm_allowed = APP_FALSE;
+}
+
 float ControlModel_GetVrefRamp(void)
 {
     Control_Setpoint_t setpoint;
