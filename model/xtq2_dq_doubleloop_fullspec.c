@@ -23,8 +23,6 @@
 #include "xtq2_dq_doubleloop_fullspec_private.h"
 #include "app_config.h"
 
-/* One-pole LPF, Fs = 20 kHz and -3 dB cutoff = 2 kHz. */
-#define VOUT_INPUT_LPF_ALPHA (0.4558867801)
 #include <string.h>
 
 /* Block signals (default storage) */
@@ -210,12 +208,6 @@ void xtq2_dq_doubleloop_fullspec_step(void)
                xtq2_dq_doubleloop_fullspec_B.ADCAVoltage20kHz +
                xtq2_dq_doubleloop_fullspec_P.Constant5_Value) *
     xtq2_dq_doubleloop_fullspec_P.Gain6_Gain;
-
-  /* Vout input LPF: the filtered sample feeds all downstream control paths. */
-  xtq2_dq_doubleloop_fullspec_DW.VoutInputLPF_state +=
-    VOUT_INPUT_LPF_ALPHA * (rtb_Gain6 -
-    xtq2_dq_doubleloop_fullspec_DW.VoutInputLPF_state);
-  rtb_Gain6 = xtq2_dq_doubleloop_fullspec_DW.VoutInputLPF_state;
 
   /* DiscreteTransferFcn: '<Root>/Capacitor current estimator' */
   Capacitorcurrentestimator_tmp = (rtb_Gain6 -
@@ -940,9 +932,6 @@ void xtq2_dq_doubleloop_fullspec_initialize(void)
     }
 
     config_ADCC_SOC0 ();
-
-    /* InitializeConditions for Vout input LPF (2 kHz). */
-    xtq2_dq_doubleloop_fullspec_DW.VoutInputLPF_state = 0.0;
 
     /* InitializeConditions for DiscreteTransferFcn: '<Root>/Vd LPF' */
     xtq2_dq_doubleloop_fullspec_DW.VdLPF_states =

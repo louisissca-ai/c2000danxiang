@@ -36,14 +36,14 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
   /* Variable: Kad
    * Referenced by: '<Root>/Virtual damping gain'
    */
-  50.0,
+  8.261049,
 
   /* Variable: Ki_i_dq
    * Referenced by:
    *   '<S35>/Integral Gain'
    *   '<S135>/Integral Gain'
    */
-  500.0,
+  125.663706,
 
   /* Variable: Ki_v_dq
    * Referenced by:
@@ -57,7 +57,7 @@ P_xtq2_dq_doubleloop_fullspec_T xtq2_dq_doubleloop_fullspec_P = {
    *   '<S43>/Proportional Gain'
    *   '<S143>/Proportional Gain'
    */
-  20.0,
+  5.026548,
 
   /* Variable: Kp_v_dq
    * Referenced by:

@@ -68,6 +68,12 @@ void ControlIF_Init(void)
     feedback_default.vin = 0.0f;
     feedback_default.vout = 0.0f;
     feedback_default.iout = 0.0f;
+    feedback_default.vout_inst = 0.0f;
+    feedback_default.iout_inst = 0.0f;
+    feedback_default.vd = 0.0f;
+    feedback_default.vq = 0.0f;
+    feedback_default.id = 0.0f;
+    feedback_default.iq = 0.0f;
     feedback_default.duty = 0.0f;
     feedback_default.run_state = APP_RUN_STATE_STOP;
     feedback_default.fault_code = FAULT_NONE;

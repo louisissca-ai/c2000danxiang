@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "adc_calibration.h"
 #include "app_config.h"
 #include "app_types.h"
 #include "board.h"
@@ -54,8 +55,10 @@ static void AssertNear(float actual, float expected, float tolerance)
 
 int main(void)
 {
+    ADC_Cal_View_t cal_view;
     Control_Feedback_t feedback;
     Control_Setpoint_t setpoint;
+    HMI_Data_t hmi_data;
     float duty_a;
     float duty_b;
     float first_ramp;
@@ -63,10 +66,12 @@ int main(void)
     float initial_calibration;
     float max_duty;
     float min_duty;
-    float reference;
     uint16_t compare_a;
     uint16_t compare_b;
     uint16_t i;
+    uint16_t raw_iout;
+    uint16_t raw_vout;
+    uint16_t window;
 
     ControlIF_Init();
     ControlIF_GetSetpoint(&setpoint);
@@ -76,6 +81,23 @@ int main(void)
     AssertNear(APP_ADC_CAL_VOUT_K_DEFAULT, 109.781873f, 0.00001f);
     AssertNear(APP_ADC_CAL_VOUT_K_DEFAULT,
         18.138269f * 19.368f / 3.2f, 0.0001f);
+    AssertNear(APP_CONTROL_ACTIVE_DAMPING_GAIN,
+        50.0f * 3.2f / 19.368f, 0.0001f);
+    AssertNear(APP_CONTROL_KP_I_DQ, 0.001f * 6.2831853071795865f *
+        800.0f, 0.00001f);
+    AssertNear(APP_CONTROL_KI_I_DQ / APP_CONTROL_KP_I_DQ,
+        25.0f, 0.0001f);
+    AssertNear(APP_CONTROL_KP_V_DQ, 0.006f, 0.0f);
+    AssertNear(APP_CONTROL_KI_V_DQ, 2.5f, 0.0f);
+    assert((APP_VOUT_CONTROL_POLARITY == 1.0f) ||
+        (APP_VOUT_CONTROL_POLARITY == -1.0f));
+    assert(APP_IOUT_CONTROL_POLARITY > 0.0f);
+    assert(((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
+        APP_ADC_CAL_IOUT_K_DEFAULT * APP_IOUT_CONTROL_POLARITY) < 0.0f);
+    AssertNear(fabsf((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
+        APP_ADC_CAL_IOUT_K_DEFAULT * APP_IOUT_CONTROL_POLARITY),
+        fabsf((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
+        APP_ADC_CAL_IOUT_K_DEFAULT), 0.00001f);
 
     /* Open and closed loop share the same final compare safety boundary. */
     assert(ControlModel_ClampPwmCompare(APP_PWM_TBPRD_COUNTS, 0u) ==
@@ -168,70 +190,41 @@ int main(void)
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
     for (i = 0u; i < 400u; i++)
     {
-        reference = ControlModel_UpdateVoutRmsReference(20.0f,
+        ControlModel_UpdateRunningVoutRms(
             20.0f * 1.4142135623730951f *
-            sinf(6.2831853071795865f * (float)i / 400.0f), APP_TRUE);
+            sinf(6.2831853071795865f * (float)i / 400.0f));
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 20.0f, 0.0001f);
-    AssertNear(reference, 20.0f, 0.0001f);
 
-    /* A 26 Vrms cycle can reduce the internal reference only 0.25 V. */
+    /* RMS measurement has no path back into the closed-loop reference. */
     for (i = 0u; i < 400u; i++)
     {
-        reference = ControlModel_UpdateVoutRmsReference(
-            20.0f, 26.0f, APP_TRUE);
+        ControlModel_UpdateRunningVoutRms(26.0f);
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 26.0f, 0.0001f);
-    AssertNear(reference, 19.75f, 0.0001f);
     for (i = 0u; i < 400u; i++)
     {
-        reference = ControlModel_UpdateVoutRmsReference(
-            20.0f, 26.0f, APP_TRUE);
+        ControlModel_UpdateRunningVoutRms(10.0f);
     }
-    AssertNear(reference, 19.50f, 0.0001f);
+    AssertNear(ControlModel_GetRunningVoutRms(), 10.0f, 0.0001f);
+    ControlIF_GetSetpoint(&setpoint);
+    AssertNear(setpoint.vref, 20.0f, 0.0f);
 
-    /* STOP clears both measured RMS and the supervisory correction. */
+    /* STOP clears the running RMS measurement. */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
     AssertNear(ControlModel_GetRunningVoutRms(), 0.0f, 0.0f);
-    reference = ControlModel_UpdateVoutRmsReference(
-        20.0f, 0.0f, APP_TRUE);
-    AssertNear(reference, 20.0f, 0.0f);
 
-    /* Low RMS raises the reference, while both capability limits unwind. */
+    /* Repeated low readings remain measurement-only and cannot accumulate. */
     SetRunCommand(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
-    for (i = 1u; i < 400u; i++)
+    for (i = 0u; i < 4000u; i++)
     {
-        reference = ControlModel_UpdateVoutRmsReference(
-            20.0f, 10.0f, APP_TRUE);
+        ControlModel_UpdateRunningVoutRms(19.9f);
     }
-    AssertNear(reference, 20.25f, 0.0001f);
-    SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
-    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
-    SetRunCommand(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP);
-    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
-    for (i = 0u; i < 400u; i++)
-    {
-        reference = ControlModel_UpdateVoutRmsReference(
-            APP_VREF_MAX, 0.0f, APP_TRUE);
-    }
-    AssertNear(reference, APP_VREF_MAX, 0.0001f);
-    for (i = 0u; i < 400u; i++)
-    {
-        reference = ControlModel_UpdateVoutRmsReference(
-            0.0f, 26.0f, APP_TRUE);
-    }
-    AssertNear(reference, 0.0f, 0.0001f);
-
-    /* Open loop still measures RMS but never retains a reference correction. */
-    for (i = 0u; i < 400u; i++)
-    {
-        reference = ControlModel_UpdateVoutRmsReference(
-            20.0f, 26.0f, APP_FALSE);
-    }
-    AssertNear(reference, 20.0f, 0.0f);
-    AssertNear(ControlModel_GetRunningVoutRms(), 26.0f, 0.0001f);
+    AssertNear(ControlModel_GetRunningVoutRms(), 19.9f, 0.0001f);
+    ControlIF_GetSetpoint(&setpoint);
+    AssertNear(setpoint.vref, 20.0f, 0.0f);
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
 
@@ -243,12 +236,45 @@ int main(void)
     ControlIF_GetFeedback(&feedback);
     AssertNear(feedback.vout, 0.0f, 0.0f);
     AssertNear(feedback.iout, 0.0f, 0.0f);
+    AssertNear(feedback.vout_inst, 3.0f, 0.0f);
+    AssertNear(feedback.iout_inst, -4.0f, 0.0f);
     ControlModel_UpdateStoppedFeedback(36.0f, 3.0f, -4.0f);
     ControlIF_GetFeedback(&feedback);
     AssertNear(feedback.vout, 3.0f, 0.00001f);
     AssertNear(feedback.iout, 4.0f, 0.00001f);
+    AssertNear(feedback.vout_inst, 3.0f, 0.0f);
+    AssertNear(feedback.iout_inst, -4.0f, 0.0f);
     AssertNear(feedback.duty, 0.0f, 0.0f);
     assert(feedback.run_state == APP_RUN_STATE_STOP);
+
+    /* Signed instantaneous samples stay separate from RMS measurements. */
+    ControlModel_SetFeedback(36.0f, 20.0f, 2.0f,
+        -28.3f, -2.5f, 14.1f, 0.2f, 1.0f, -0.1f, 50.0f);
+    ControlIF_GetFeedback(&feedback);
+    AssertNear(feedback.vout, 20.0f, 0.0f);
+    AssertNear(feedback.iout, 2.0f, 0.0f);
+    AssertNear(feedback.vout_inst, -28.3f, 0.0f);
+    AssertNear(feedback.iout_inst, -2.5f, 0.0f);
+    AssertNear(feedback.vd, 14.1f, 0.0f);
+    AssertNear(feedback.vq, 0.2f, 0.0f);
+    AssertNear(feedback.id, 1.0f, 0.0f);
+    AssertNear(feedback.iq, -0.1f, 0.0f);
+
+    HMI_Param_Init();
+    HMI_Param_SetVout(20.0f);
+    HMI_Param_SetIout(2.0f);
+    HMI_Param_SetVoutInst(-28.3f);
+    HMI_Param_SetIoutInst(-2.5f);
+    HMI_Param_SetDq(14.1f, 0.2f, 1.0f, -0.1f);
+    HMI_Param_GetData(&hmi_data);
+    AssertNear(hmi_data.vout, 20.0f, 0.0f);
+    AssertNear(hmi_data.iout, 2.0f, 0.0f);
+    AssertNear(hmi_data.vout_inst, -28.3f, 0.0f);
+    AssertNear(hmi_data.iout_inst, -2.5f, 0.0f);
+    AssertNear(hmi_data.vd, 14.1f, 0.0f);
+    AssertNear(hmi_data.vq, 0.2f, 0.0f);
+    AssertNear(hmi_data.id, 1.0f, 0.0f);
+    AssertNear(hmi_data.iq, -0.1f, 0.0f);
 
     /* A mode request while running is rejected until a stopped command arrives. */
     SetRunCommand(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP);
@@ -360,6 +386,8 @@ int main(void)
     HMI_Param_SetVref(APP_VREF_DEFAULT);
     HMI_Param_SetFaultCode(FAULT_UVLO);
     HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
+    assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_DQ_MONITOR);
+    HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
     assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_SET_VREF);
 
     initial_vref = HMI_Param_GetVref();
@@ -387,28 +415,123 @@ int main(void)
     AssertNear(APP_ADC_CAL_IOUT_B_DEFAULT, 1.643f, 0.00001f);
     AssertNear(HMI_Param_GetVoutAdcB(), APP_ADC_CAL_VOUT_B_DEFAULT, 0.00001f);
     AssertNear(HMI_Param_GetVoutAdcK(), APP_ADC_CAL_VOUT_K_DEFAULT, 0.00001f);
+
+    /* The retained manual fields only change after entering edit mode. */
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    assert(HMI_Menu_GetEditIndex() == 3u);
+    HMI_Menu_Task_20ms(KEY_EVENT_OK);
+    assert(HMI_Menu_IsCalEditing() != 0u);
     initial_calibration = HMI_Param_GetVoutAdcB();
     HMI_Param_SetEnableCmd(APP_TRUE);
     HMI_Menu_Task_20ms(KEY_EVENT_UP);
-    AssertNear(HMI_Param_GetVoutAdcB(), initial_calibration + 0.001f, 0.00001f);
+    AssertNear(HMI_Param_GetVoutAdcB(), initial_calibration + 0.001f,
+        0.00001f);
     assert(HMI_Param_GetEnableCmd() == APP_FALSE);
-    HMI_Menu_Task_20ms(KEY_EVENT_LONG_UP);
-    AssertNear(HMI_Param_GetVoutAdcB(), initial_calibration + 0.101f, 0.00001f);
     HMI_Menu_Task_20ms(KEY_EVENT_OK);
-    assert(HMI_Menu_GetEditIndex() == 1u);
+    assert(HMI_Menu_IsCalEditing() == 0u);
+
+    /*
+     * Offset calibration ignores the first 0.5 s, trims ten low and ten high
+     * block means independently, then averages every retained raw sample.
+     */
+    HMI_Param_Init();
+    ADC_Cal_Init();
+    HMI_Param_SetFaultCode(FAULT_NONE);
+    HMI_Param_SetRunState(APP_RUN_STATE_STOP);
+    assert(ADC_Cal_StartOffset() != APP_FALSE);
+    for (i = 0u; i < 50400u; i++)
+    {
+        if (i < 10000u)
+        {
+            raw_vout = 4095u;
+            raw_iout = 0u;
+        }
+        else
+        {
+            window = (uint16_t)((i - 10000u) / 400u);
+            if (window < 10u)
+            {
+                raw_vout = 1900u;
+                raw_iout = 1800u;
+            }
+            else if (window >= 91u)
+            {
+                raw_vout = 2200u;
+                raw_iout = 2300u;
+            }
+            else
+            {
+                raw_vout = (uint16_t)(2048u + (i & 1u));
+                raw_iout = (uint16_t)(2038u + (i & 1u));
+            }
+        }
+        ADC_Cal_PushStoppedRaw(raw_vout, raw_iout,
+            3.3f / 4095.0f, 3.3f / 4095.0f);
+    }
+    ADC_Cal_GetView(&cal_view);
+    assert(cal_view.state == ADC_CAL_STATE_OFFSET_COMPUTING);
+    assert(cal_view.progress_percent == 100u);
+    AssertNear(HMI_Param_GetVoutAdcB(), APP_ADC_CAL_VOUT_B_DEFAULT, 0.0f);
+    ControlModel_SetFeedback(36.0f, 0.0f, 0.0f,
+        -1.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    ADC_Cal_Task1ms();
+    AssertNear(HMI_Param_GetVoutAdcB(), (2048.5f * 3.3f / 4095.0f),
+        0.000001f);
+    AssertNear(HMI_Param_GetIoutAdcB(), (2038.5f * 3.3f / 4095.0f),
+        0.000001f);
+
+    /* Cancel and invalid offset results never replace the live parameters. */
+    initial_calibration = HMI_Param_GetVoutAdcB();
+    assert(ADC_Cal_StartOffset() != APP_FALSE);
+    for (i = 0u; i < 100u; i++)
+    {
+        ADC_Cal_PushStoppedRaw(1000u, 1000u,
+            3.3f / 4095.0f, 3.3f / 4095.0f);
+    }
+    ADC_Cal_Cancel();
+    ADC_Cal_GetView(&cal_view);
+    assert(cal_view.state == ADC_CAL_STATE_IDLE);
+    AssertNear(HMI_Param_GetVoutAdcB(), initial_calibration, 0.0f);
+
+    assert(ADC_Cal_StartOffset() != APP_FALSE);
+    for (i = 0u; i < 50400u; i++)
+    {
+        ADC_Cal_PushStoppedRaw(65535u, 65535u,
+            3.3f / 4095.0f, 3.3f / 4095.0f);
+    }
+    ADC_Cal_Task1ms();
+    ADC_Cal_GetView(&cal_view);
+    assert(cal_view.state == ADC_CAL_STATE_ERROR);
+    assert(cal_view.error == ADC_CAL_ERROR_RANGE);
+    AssertNear(HMI_Param_GetVoutAdcB(), initial_calibration, 0.0f);
+
+    /* V and I gains calibrate independently and apply only after STOP. */
     initial_calibration = HMI_Param_GetVoutAdcK();
-    HMI_Menu_Task_20ms(KEY_EVENT_LONG_DOWN);
-    AssertNear(HMI_Param_GetVoutAdcK(), initial_calibration - 0.1f, 0.00001f);
-    HMI_Menu_Task_20ms(KEY_EVENT_OK);
-    assert(HMI_Menu_GetEditIndex() == 2u);
-    initial_calibration = HMI_Param_GetIoutAdcB();
-    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
-    AssertNear(HMI_Param_GetIoutAdcB(), initial_calibration - 0.001f, 0.00001f);
-    HMI_Menu_Task_20ms(KEY_EVENT_OK);
-    assert(HMI_Menu_GetEditIndex() == 3u);
+    HMI_Param_SetModeCmd(APP_CONTROL_MODE_OPEN_LOOP);
+    HMI_Param_SetRunState(APP_RUN_STATE_RUN);
+    assert(ADC_Cal_ApplyGain(ADC_CAL_CHANNEL_VOUT, 20.0f, 10.0f) !=
+        APP_FALSE);
+    AssertNear(HMI_Param_GetVoutAdcK(), initial_calibration, 0.0f);
+    ControlModel_SetFeedback(36.0f, 0.0f, 0.0f,
+        -1.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    ADC_Cal_Task1ms();
+    AssertNear(HMI_Param_GetVoutAdcK(), initial_calibration * 2.0f,
+        0.0001f);
+    AssertNear(HMI_Param_GetIoutAdcK(), APP_ADC_CAL_IOUT_K_DEFAULT,
+        0.00001f);
+
     initial_calibration = HMI_Param_GetIoutAdcK();
-    HMI_Menu_Task_20ms(KEY_EVENT_LONG_UP);
-    AssertNear(HMI_Param_GetIoutAdcK(), initial_calibration + 0.1f, 0.00001f);
+    HMI_Param_SetModeCmd(APP_CONTROL_MODE_OPEN_LOOP);
+    HMI_Param_SetRunState(APP_RUN_STATE_RUN);
+    assert(ADC_Cal_ApplyGain(ADC_CAL_CHANNEL_IOUT, 2.0f, 1.0f) !=
+        APP_FALSE);
+    ControlModel_SetFeedback(36.0f, 0.0f, 0.0f,
+        -1.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    ADC_Cal_Task1ms();
+    AssertNear(HMI_Param_GetIoutAdcK(), initial_calibration * 2.0f,
+        0.0001f);
 
     return 0;
 }

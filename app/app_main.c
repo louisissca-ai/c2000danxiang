@@ -9,13 +9,14 @@
 #include <stdint.h>
 
 #include "app_config.h"
+#include "adc_calibration.h"
 #include "board.h"
 #include "control_interface.h"
 #include "hmi.h"
 
 static volatile uint16_t g_app_task_1ms_flag = 0u;
 static volatile uint16_t g_app_task_10ms_flag = 0u;
-static volatile uint16_t g_app_task_100ms_flag = 0u;
+static volatile uint16_t g_app_task_display_flag = 0u;
 
 /*
  * 函数: APP_Init
@@ -28,6 +29,7 @@ void APP_Init(void)
     Board_Init();
     ControlIF_Init();
     HMI_Init();
+    ADC_Cal_Init();
 }
 
 /*
@@ -39,12 +41,12 @@ void APP_Init(void)
 void APP_TaskScheduler_1ms_ISR(void)
 {
     static uint16_t cnt_10ms = 0u;
-    static uint16_t cnt_100ms = 0u;
+    static uint16_t cnt_display_ms = 0u;
 
     g_app_task_1ms_flag = 1u;
 
     cnt_10ms++;
-    cnt_100ms++;
+    cnt_display_ms++;
 
     if (cnt_10ms >= APP_KEY_TASK_10MS)
     {
@@ -52,10 +54,10 @@ void APP_TaskScheduler_1ms_ISR(void)
         g_app_task_10ms_flag = 1u;
     }
 
-    if (cnt_100ms >= APP_DISPLAY_TASK_100MS)
+    if (cnt_display_ms >= APP_DISPLAY_TASK_MS)
     {
-        cnt_100ms = 0u;
-        g_app_task_100ms_flag = 1u;
+        cnt_display_ms = 0u;
+        g_app_task_display_flag = 1u;
     }
 }
 
@@ -79,9 +81,9 @@ void APP_BackgroundLoop(void)
         HMI_Task_10ms();
     }
 
-    if (g_app_task_100ms_flag != 0u)
+    if (g_app_task_display_flag != 0u)
     {
-        g_app_task_100ms_flag = 0u;
-        HMI_Task_100ms();
+        g_app_task_display_flag = 0u;
+        HMI_Task_Display();
     }
 }

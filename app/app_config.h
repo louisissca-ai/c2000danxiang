@@ -52,10 +52,24 @@
 #define APP_ADC_CAL_K_MIN           0.001f
 #define APP_ADC_CAL_K_MAX           1000.0f
 
+/*
+ * Preserve the previous active-damping loop gain after Vout calibration was
+ * raised by 19.368 / 3.2 = 6.0525. Re-tune from scope/FFT data if LC ringing
+ * remains.
+ */
+#define APP_CONTROL_ACTIVE_DAMPING_GAIN 8.261049f
+/* Set to -1.0f only when the open-loop dq sign check reports Vd < 0. */
+#define APP_VOUT_CONTROL_POLARITY       -1.0f
+#define APP_IOUT_CONTROL_POLARITY       -1.0f
+#define APP_CONTROL_KP_I_DQ              5.026548f
+#define APP_CONTROL_KI_I_DQ            125.663706f
+#define APP_CONTROL_KP_V_DQ              0.006f
+#define APP_CONTROL_KI_V_DQ              2.5f
+
 #define APP_HMI_TASK_1MS        1u
 #define APP_KEY_TASK_10MS       10u
 #define APP_MENU_TASK_20MS      20u
-#define APP_DISPLAY_TASK_100MS  100u
+#define APP_DISPLAY_TASK_MS      90u
 
 /* 长按计时以 Key_Task_10ms() 的调用节拍为单位。 */
 #define APP_KEY_LONG_PRESS_TICKS 100u

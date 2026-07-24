@@ -18,17 +18,23 @@ Embedded Coder 的 TI C2000 目标生成；手写调度、安全闭锁和 HMI �
 | PWM | 中心对齐，TBPRD=3000，死区 24 TBCLK（约 200 ns），开环 CMPA 限制为 48–2952 |
 | 输出电压采样 | ADCA SOC0 / ADCIN4，EPWM1 SOCA 触发 |
 | 输出电流采样 | ADCC SOC0 / ADCIN4，EPWM1 SOCA 触发 |
-| 采样滤波 | Vout：20 kHz 采样的一阶 2 kHz 低通；Iout：不新增输入滤波 |
-| Vout ADC 标定 | `(raw * 3.3 / 4095 - 1.643) * 109.781873` |
-| Iout ADC 标定 | `(raw * 3.3 / 4095 - 1.643) * 3.33333 * 0.84973 / 0.77` |
+| 采样滤波 | 不新增ADC前置低通；使用模型原有dq与主动阻尼滤波器 |
+| Vout ADC 标定 | `(raw * 3.3 / 4095 - 1.643) * 109.781873`，控制极性由 `APP_VOUT_CONTROL_POLARITY` 配置 |
+| Iout ADC 标定 | `(raw * 3.3 / 4095 - 1.643) * 3.678481`，控制极性为`+1` |
+| 主动阻尼增益 Kad | `8.261049`（随 Vout 标定倍率补偿） |
+| 电流环 PI | `Kp=5.026548`、`Ki=125.663706`（1 mH，约800 Hz） |
+| 电压环 PI | `Kp=0.006`、`Ki=2.5`（10 µF，约80 Hz） |
 
 生成的算法位于 `model/xtq2_dq_doubleloop_fullspec.*`。`app/firmware_main.c`
 在 20 kHz ISR 中执行模型、将 HMI 的电压设定送入模型参数，并把电压/电流
-RMS、占空比和故障状态回传给 HMI。
+RMS、带符号瞬时值、占空比和故障状态回传给 HMI。
 
-`ADC Cal` 页可在线调整 `V b`、`V k`、`I b`、`I k`，对应
-`Vout/Iout = (raw * 3.3 / 4095 - b) * k`。UP/DOWN 每次调整 0.001，
-长按 UP/DOWN 每次调整 0.1，OK 切换字段；修改标定会停止输出请求，需重新按 RUN。
+`ADC Cal` 页包含 `ZERO AUTO`、`V GAIN`、`I GAIN` 以及四个手动 b/k 字段，对应
+`Vout/Iout = (raw * 3.3 / 4095 - b) * k`。UP/DOWN 选择项目，OK 进入；
+零点自动校准要求 STOP，先等待 0.5 秒，再用约 2 秒分块采样的截尾均值求真实偏置；
+增益自动校准要求开环 RUN，输入外部真有效值后
+会自动停机并在本次上电期间应用。所有校准值都只保存在 RAM，重新上电后恢复编译期默认值；
+手动字段仍支持 0.001 微调和长按 0.1 微调。
 
 ## 控制模式
 
@@ -40,19 +46,33 @@ RMS、占空比和故障状态回传给 HMI。
   按 RUN 才会以新模式启动。默认模式为 `CLOSED LOOP`，默认 `Vref` 为 20 V RMS。
 
 开环计算使用固定的 36 V 母线参数，因此实际输出 RMS 会随真实母线电压、负载、
-滤波器和死区变化；OLED 显示的采样 RMS 用于观察，不参与开环幅值调节。
+滤波器和死区变化；采样 RMS 仅用于测量和校准，不参与开环幅值调节。
 0.968 的调制度上限在每个桥臂两端各保留 48 TBCLK，其中包含 24 TBCLK 死区和
 24 TBCLK 最小有效导通时间，避免峰值附近的窄脉冲被死区吞没。
 闭环也使用同一调制度和 CMPA 边界；最终电压命令发生饱和时，削减量回算到电流
 内环积分器，避免波峰削顶期间继续积分。36 V 标称母线再保留 5% 能力余量后，
 HMI 可设电压上限约为 23.4 V RMS。
 
-闭环 dq 外环调节 50 Hz 基波；固件另外对 2 kHz 低通后的输出电压每 400 点计算
-一次总有效值。总 RMS 每 20 ms 以 0.10 的增益修正 dq 基波参考，单周期修正不
-超过 0.25 V，并在参考上下限执行抗饱和。OLED 的 Uout 使用同一个 400 点总 RMS，
-不再把 dq 低通滤波器的内部状态误当成实际有效值。
+闭环 dq 外环调节 50 Hz 基波；固件另外对校准后的输出电压每 400 点计算
+一次总有效值。总 RMS 仅用于测量和 ADC 增益校准，不再积分修正 dq 基波参考；
+闭环 dq 参考直接使用软启动输出，避免微小采样误差造成稳态慢漂。OLED 主页面的
+`Vnow/Inow` 使用带符号瞬时采样值，并以 90 ms 周期刷新，避免与 50 Hz 波形整周期
+同步而长期显示同一相位；校准页面仍使用 400 点总 RMS。
 当前电压增益由偏置确认后的单点实测得到：
 `109.781873 = 18.138269 * 19.368 / 3.2`。
+
+### 闭环反馈极性诊断
+
+首次闭环前先在低压、限流条件下使用 `OPEN LOOP` 和 5–10 V 参考。稳态后从
+OLED 主页面按一次 RIGHT 或 DOWN 进入 `DQ Monitor` 页面，直接观察 Vd/Vq/Id/Iq：
+
+- Vd 应约为 `+sqrt(2) * Vout_rms`，Vq 应接近 0。
+- 若 Vd 幅值正确但为负，将 `APP_VOUT_CONTROL_POLARITY` 从 `+1.0f` 改为
+  `-1.0f`；若 Vq 占主导，先检查实际控制频率和 100 点四分之一周期延时。
+- 接阻性负载后，Id 应主要为正；否则修正
+  `APP_IOUT_CONTROL_POLARITY`。
+
+只确认 RMS 幅值不能确认反馈极性。完成以上检查后才能切入闭环。
 
 ## 安全行为
 
@@ -91,8 +111,15 @@ HMI 可设电压上限约为 23.4 V RMS。
 gcc -DUNIT_TEST -I app -I control_if -I drivers_user -I hmi `
   tests/run_fault_hmi_check.c control_if/control_interface.c `
   control_if/control_model_if.c hmi/hmi_param.c hmi/hmi_menu.c `
+  app/adc_calibration.c `
   -o tests/run_fault_hmi_check.exe
 tests/run_fault_hmi_check.exe
+
+gcc -DUNIT_TEST -I app -I control_if -I drivers_user -I hmi `
+  tests/run_hmi_display_check.c hmi/hmi_display.c hmi/hmi_param.c `
+  -o tests/run_hmi_display_check.exe
+tests/run_hmi_display_check.exe
+
 ```
 
 ## 目录

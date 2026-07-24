@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "MW_target_hardware_resources.h"
+#include "adc_calibration.h"
 #include "app_config.h"
 #include "app_main.h"
 #include "app_types.h"
@@ -52,11 +53,13 @@ static void Firmware_ApplyAdcCalibration(void)
     xtq2_dq_doubleloop_fullspec_P.Constant5_Value =
         -(real_T)HMI_Param_GetVoutAdcB();
     xtq2_dq_doubleloop_fullspec_P.Gain6_Gain =
-        (real_T)HMI_Param_GetVoutAdcK();
+        (real_T)HMI_Param_GetVoutAdcK() *
+        (real_T)APP_VOUT_CONTROL_POLARITY;
     xtq2_dq_doubleloop_fullspec_P.Constant1_Value =
         -(real_T)HMI_Param_GetIoutAdcB();
     xtq2_dq_doubleloop_fullspec_P.Gain4_Gain =
-        (real_T)HMI_Param_GetIoutAdcK();
+        (real_T)HMI_Param_GetIoutAdcK() *
+        (real_T)APP_IOUT_CONTROL_POLARITY;
 }
 
 static void Firmware_ResetControlState(void)
@@ -154,9 +157,12 @@ static float Firmware_GetIoutRms(void)
 void rt_OneStep(void)
 {
     float iout_sample;
-    float model_vref;
+    float id;
+    float iq;
     float vref_ramp;
     float duty_percent;
+    float vd;
+    float vq;
     float vout_rms;
     float vout_sample;
     uint16_t control_enabled;
@@ -193,6 +199,10 @@ void rt_OneStep(void)
             Firmware_ResetControlState();
         }
         g_last_control_enabled = APP_FALSE;
+        ADC_Cal_PushStoppedRaw(AdcaResultRegs.ADCRESULT0,
+            AdccResultRegs.ADCRESULT0,
+            (float)xtq2_dq_doubleloop_fullspec_P.Gain11_Gain,
+            (float)xtq2_dq_doubleloop_fullspec_P.Gain1_Gain);
         ControlModel_UpdateStoppedFeedback(
             (float)xtq2_dq_doubleloop_fullspec_P.Vin,
             vout_sample, iout_sample);
@@ -203,12 +213,9 @@ void rt_OneStep(void)
         g_last_control_enabled = APP_TRUE;
 
         vref_ramp = ControlModel_GetVrefRamp();
-        model_vref = ControlModel_UpdateVoutRmsReference(vref_ramp,
-            (float)xtq2_dq_doubleloop_fullspec_DW.VoutInputLPF_state,
-            (control_mode == APP_CONTROL_MODE_CLOSED_LOOP) ?
-            APP_TRUE : APP_FALSE);
+        ControlModel_UpdateRunningVoutRms(vout_sample);
         xtq2_dq_doubleloop_fullspec_P.Vout_rms_ref = (control_mode ==
-            APP_CONTROL_MODE_CLOSED_LOOP) ? (real_T)model_vref : 0.0;
+            APP_CONTROL_MODE_CLOSED_LOOP) ? (real_T)vref_ramp : 0.0;
 
         xtq2_dq_doubleloop_fullspec_step();
         if (control_mode == APP_CONTROL_MODE_CLOSED_LOOP)
@@ -226,6 +233,14 @@ void rt_OneStep(void)
             xtq2_dq_doubleloop_fullspec_P.Gain1_Gain,
             xtq2_dq_doubleloop_fullspec_P.Constant1_Value,
             xtq2_dq_doubleloop_fullspec_P.Gain4_Gain);
+        vd = (float)(xtq2_dq_doubleloop_fullspec_P.VdLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.VdLPF_states);
+        vq = (float)(xtq2_dq_doubleloop_fullspec_P.VqLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.VqLPF_states);
+        id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
+        iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
         if (starting != APP_FALSE)
         {
             /*
@@ -235,7 +250,8 @@ void rt_OneStep(void)
             BoardPWM_ForceSafe();
             ControlModel_SetFeedback(
                 (float)xtq2_dq_doubleloop_fullspec_P.Vin,
-                ControlModel_GetRunningVoutRms(), 0.0f, 0.0f);
+                ControlModel_GetRunningVoutRms(), 0.0f,
+                vout_sample, iout_sample, vd, vq, id, iq, 0.0f);
         }
         else
         {
@@ -249,7 +265,8 @@ void rt_OneStep(void)
                 duty_percent = Firmware_GetDutyPercent();
                 ControlModel_SetFeedback(
                     (float)xtq2_dq_doubleloop_fullspec_P.Vin,
-                    vout_rms, Firmware_GetIoutRms(), duty_percent);
+                    vout_rms, Firmware_GetIoutRms(),
+                    vout_sample, iout_sample, vd, vq, id, iq, duty_percent);
             }
             else
             {
@@ -304,6 +321,16 @@ int main(void)
     xtq2_dq_doubleloop_fullspec_initialize();
     ControlModel_Init();
     xtq2_dq_doubleloop_fullspec_P.Vin = (real_T)APP_VBUS_NOMINAL_V;
+    xtq2_dq_doubleloop_fullspec_P.Kad =
+        (real_T)APP_CONTROL_ACTIVE_DAMPING_GAIN;
+    xtq2_dq_doubleloop_fullspec_P.Kp_i_dq =
+        (real_T)APP_CONTROL_KP_I_DQ;
+    xtq2_dq_doubleloop_fullspec_P.Ki_i_dq =
+        (real_T)APP_CONTROL_KI_I_DQ;
+    xtq2_dq_doubleloop_fullspec_P.Kp_v_dq =
+        (real_T)APP_CONTROL_KP_V_DQ;
+    xtq2_dq_doubleloop_fullspec_P.Ki_v_dq =
+        (real_T)APP_CONTROL_KI_V_DQ;
 
     globalInterruptDisable();
     runModel = ((rtmGetErrorStatus(xtq2_dq_doubleloop_fullspec_M) == NULL) &&

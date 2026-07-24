@@ -6,6 +6,7 @@
 
 #include "hmi.h"
 
+#include "adc_calibration.h"
 #include "control_interface.h"
 #include "app_config.h"
 #include "hmi_display.h"
@@ -31,6 +32,9 @@ static void HMI_PullFeedbackFromControlIF(void)
     HMI_Param_SetVin(feedback.vin);
     HMI_Param_SetVout(feedback.vout);
     HMI_Param_SetIout(feedback.iout);
+    HMI_Param_SetVoutInst(feedback.vout_inst);
+    HMI_Param_SetIoutInst(feedback.iout_inst);
+    HMI_Param_SetDq(feedback.vd, feedback.vq, feedback.id, feedback.iq);
     HMI_Param_SetDuty(feedback.duty);
     HMI_Param_SetRunState(feedback.run_state);
     HMI_Param_SetFaultCode(feedback.fault_code);
@@ -58,7 +62,7 @@ void HMI_Init(void)
  */
 void HMI_Task_1ms(void)
 {
-    /* 预留给未来的非阻塞定时处理。重负载工作不要放在 1 ms 任务中。 */
+    ADC_Cal_Task1ms();
 }
 
 /*
@@ -91,15 +95,15 @@ void HMI_Task_10ms(void)
 }
 
 /*
- * 函数: HMI_Task_100ms
- * 调用周期: 100 ms 后台任务。
+ * Function: HMI_Task_Display
+ * 调用周期: APP_DISPLAY_TASK_MS 后台任务。
  * ISR: 否，因为该任务会格式化显示数据并刷新 OLED。
  * 阻塞: 在本层为否；目标驱动也必须保持非阻塞。
  */
-void HMI_Task_100ms(void)
+void HMI_Task_Display(void)
 {
     HMI_PullFeedbackFromControlIF();
-    HMI_Display_Task_100ms();
+    HMI_Display_Task();
 }
 
 float HMI_Get_Vref(void)
@@ -135,6 +139,16 @@ void HMI_Set_Vout(float vout)
 void HMI_Set_Iout(float iout)
 {
     HMI_Param_SetIout(iout);
+}
+
+void HMI_Set_VoutInst(float vout)
+{
+    HMI_Param_SetVoutInst(vout);
+}
+
+void HMI_Set_IoutInst(float iout)
+{
+    HMI_Param_SetIoutInst(iout);
 }
 
 void HMI_Set_Duty(float duty)

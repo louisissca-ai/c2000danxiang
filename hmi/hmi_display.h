@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 void HMI_Display_Init(void);
-void HMI_Display_Task_100ms(void);
+void HMI_Display_Task(void);
 
 #ifdef __cplusplus
 }

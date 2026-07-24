@@ -18,6 +18,7 @@ extern "C" {
 typedef enum
 {
     HMI_MENU_PAGE_MAIN = 0,
+    HMI_MENU_PAGE_DQ_MONITOR,
     HMI_MENU_PAGE_SET_VREF,
     HMI_MENU_PAGE_SET_IREF,
     HMI_MENU_PAGE_SET_ENABLE,
@@ -30,6 +31,8 @@ void HMI_Menu_Init(void);
 void HMI_Menu_Task_20ms(KeyEvent_t event);
 HMI_MenuPage_t HMI_Menu_GetPage(void);
 uint16_t HMI_Menu_GetEditIndex(void);
+uint16_t HMI_Menu_IsCalEditing(void);
+uint16_t HMI_Menu_GetCalDigit(void);
 
 #ifdef __cplusplus
 }

@@ -54,7 +54,6 @@ typedef struct {
 
 /* Block states (default storage) for system '<Root>' */
 typedef struct {
-  real_T VoutInputLPF_state;           /* '<Root>/Vout input LPF (2 kHz)' */
   real_T VdLPF_states;                 /* '<Root>/Vd LPF' */
   real_T Integrator_DSTATE;            /* '<S88>/Integrator' */
   real_T IdLPF_states;                 /* '<Root>/Id LPF' */

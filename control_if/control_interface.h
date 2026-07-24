@@ -27,6 +27,12 @@ typedef struct
     float vin;
     float vout;
     float iout;
+    float vout_inst;
+    float iout_inst;
+    float vd;
+    float vq;
+    float id;
+    float iq;
     float duty;
     uint16_t run_state;
     uint16_t fault_code;
