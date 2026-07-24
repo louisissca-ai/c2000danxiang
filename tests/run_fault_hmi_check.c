@@ -66,7 +66,6 @@ int main(void)
     float initial_vref;
     float initial_calibration;
     float max_duty;
-    float min_duty;
     uint16_t compare_a;
     uint16_t compare_b;
     uint16_t i;
@@ -302,87 +301,91 @@ int main(void)
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
     assert(ControlModel_GetVrefRamp() > 0.0f);
 
-    /* 20 Vrms from 36 V gives m=0.7857 and complementary unipolar duties. */
+    /*
+     * 20 Vrms from 36 V gives m=0.7857. Half-cycle clamping holds one leg
+     * at exactly 0% while the other carries the full instantaneous duty.
+     */
     ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 50.0f, 0.01f);
-    AssertNear(duty_b, 50.0f, 0.01f);
+    AssertNear(duty_a, 0.0f, 0.0f);
+    AssertNear(duty_b, 0.0f, 0.0f);
     for (i = 0u; i < 99u; i++)
     {
         ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
     }
     ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 89.2837f, 0.02f);
-    AssertNear(duty_b, 10.7163f, 0.02f);
-    AssertNear(duty_a + duty_b, 100.0f, 0.01f);
+    AssertNear(duty_a, 78.5674f, 0.02f);
+    AssertNear(duty_b, 0.0f, 0.0f);
     for (i = 0u; i < 199u; i++)
     {
         ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
     }
     ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 10.7163f, 0.02f);
-    AssertNear(duty_b, 89.2837f, 0.02f);
+    AssertNear(duty_a, 0.0f, 0.0f);
+    AssertNear(duty_b, 78.5674f, 0.02f);
 
     /* Stop resets phase; 400 enabled calls make one complete 50 Hz cycle. */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
     AssertNear(ControlModel_GetVrefRamp(), 0.0f, 0.0f);
     ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 50.0f, 0.01f);
+    AssertNear(duty_a, 0.0f, 0.0f);
+    AssertNear(duty_b, 0.0f, 0.0f);
     SetRunCommand(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
     for (i = 0u; i < 400u; i++)
     {
         ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-        AssertNear(duty_a + duty_b, 100.0f, 0.01f);
+        assert((duty_a == 0.0f) || (duty_b == 0.0f));
     }
     ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 50.0f, 0.02f);
-    AssertNear(duty_b, 50.0f, 0.02f);
+    AssertNear(duty_a, 0.0f, 0.02f);
+    AssertNear(duty_b, 0.0f, 0.02f);
 
     /*
-     * Unreachable RMS requests retain a sinusoidal reference while reserving
-     * dead time plus one minimum effective pulse at both compare limits.
+     * Unreachable RMS requests retain a sinusoidal reference while the
+     * active leg's compare stays within the dead-time/min-pulse margin (or
+     * is exactly zero) and the other leg is clamped hard off.
      */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
     SetRunCommand(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
-    min_duty = 100.0f;
     max_duty = 0.0f;
     for (i = 0u; i < 400u; i++)
     {
         ControlModel_GetOpenLoopDuty(100.0f, 36.0f, &duty_a, &duty_b);
-        compare_a = (uint16_t)((float)APP_PWM_TBPRD_COUNTS *
-            duty_a * 0.01f);
-        compare_b = (uint16_t)((float)APP_PWM_TBPRD_COUNTS *
-            duty_b * 0.01f);
-        assert(compare_a >= APP_PWM_MIN_COMPARE_COUNTS);
+        assert((duty_a == 0.0f) || (duty_b == 0.0f));
+        compare_a = (duty_a <= 0.0f) ? 0u : ControlModel_ClampPwmCompare(
+            APP_PWM_TBPRD_COUNTS,
+            (uint16_t)((float)APP_PWM_TBPRD_COUNTS * duty_a * 0.01f));
+        compare_b = (duty_b <= 0.0f) ? 0u : ControlModel_ClampPwmCompare(
+            APP_PWM_TBPRD_COUNTS,
+            (uint16_t)((float)APP_PWM_TBPRD_COUNTS * duty_b * 0.01f));
+        assert((compare_a == 0u) || (compare_a >= APP_PWM_MIN_COMPARE_COUNTS));
         assert(compare_a <=
             (APP_PWM_TBPRD_COUNTS - APP_PWM_MIN_COMPARE_COUNTS));
-        assert(compare_b >= APP_PWM_MIN_COMPARE_COUNTS);
+        assert((compare_b == 0u) || (compare_b >= APP_PWM_MIN_COMPARE_COUNTS));
         assert(compare_b <=
             (APP_PWM_TBPRD_COUNTS - APP_PWM_MIN_COMPARE_COUNTS));
-        AssertNear(duty_a + duty_b, 100.0f, 0.01f);
-        if (duty_a < min_duty)
-        {
-            min_duty = duty_a;
-        }
         if (duty_a > max_duty)
         {
             max_duty = duty_a;
         }
+        if (duty_b > max_duty)
+        {
+            max_duty = duty_b;
+        }
     }
-    AssertNear(min_duty, 1.6f, 0.02f);
-    AssertNear(max_duty, 98.4f, 0.02f);
+    AssertNear(max_duty, 96.8f, 0.05f);
 
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP);
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
     ControlModel_GetOpenLoopDuty(NAN, 36.0f, &duty_a, &duty_b);
-    AssertNear(duty_a, 50.0f, 0.0f);
-    AssertNear(duty_b, 50.0f, 0.0f);
+    AssertNear(duty_a, 0.0f, 0.0f);
+    AssertNear(duty_b, 0.0f, 0.0f);
     ControlModel_GetOpenLoopDuty(20.0f, NAN, &duty_a, &duty_b);
-    AssertNear(duty_a, 50.0f, 0.0f);
-    AssertNear(duty_b, 50.0f, 0.0f);
+    AssertNear(duty_a, 0.0f, 0.0f);
+    AssertNear(duty_b, 0.0f, 0.0f);
 
     /* Invalid modes never release PWM and never replace the active mode. */
     SetRunCommand(APP_FALSE, APP_CONTROL_MODE_CLOSED_LOOP);

@@ -285,7 +285,7 @@ void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
     float *duty_a_percent, float *duty_b_percent)
 {
     float modulation;
-    float sine_value;
+    float instantaneous;
 
     if ((duty_a_percent == 0) || (duty_b_percent == 0))
     {
@@ -304,9 +304,24 @@ void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
         }
     }
 
-    sine_value = sinf(g_control_model_open_loop_phase);
-    *duty_a_percent = 50.0f * (1.0f + modulation * sine_value);
-    *duty_b_percent = 50.0f * (1.0f - modulation * sine_value);
+    instantaneous = modulation * sinf(g_control_model_open_loop_phase);
+
+    /*
+     * Half-cycle clamped modulation: only the leg carrying the instantaneous
+     * polarity switches; the other leg is held at 0% for the whole
+     * half-cycle, halving each leg's switching loss versus a 50%-centered
+     * duty pair.
+     */
+    if (instantaneous >= 0.0f)
+    {
+        *duty_a_percent = instantaneous * 100.0f;
+        *duty_b_percent = 0.0f;
+    }
+    else
+    {
+        *duty_a_percent = 0.0f;
+        *duty_b_percent = -instantaneous * 100.0f;
+    }
 
     if (g_control_model_pwm_allowed != APP_FALSE)
     {

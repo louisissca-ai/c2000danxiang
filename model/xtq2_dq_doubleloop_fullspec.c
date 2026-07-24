@@ -264,27 +264,21 @@ void xtq2_dq_doubleloop_fullspec_step(void)
    */
   rtb_Normalizedmodulationm *= 1.0 / xtq2_dq_doubleloop_fullspec_P.Vin;
 
-  /* Fcn: '<Root>/Duty A [%]' */
-  rtb_CastToDouble1 = (rtb_Normalizedmodulationm + 1.0) * 50.0;
-
-  /* S-Function (c2802xpwm): '<Root>/ePWM1 Leg A (20 kHz)' */
-
-  /*-- Update CMPA value for ePWM1 --*/
-  {
+  /*
+   * ponytail: this generated source is patched because the .slx is absent.
+   * Half-cycle clamped modulation: only the leg carrying the instantaneous
+   * polarity switches; the other leg is held at CMPA=0 (hard off) for the
+   * whole half-cycle instead of the previous 50%-centered duty pair, so
+   * each leg's switching loss is halved.
+   */
+  if (rtb_Normalizedmodulationm >= 0.0) {
+    rtb_CastToDouble1 = rtb_Normalizedmodulationm * 100.0;
     EPwm1Regs.CMPA.bit.CMPA = (uint16_T)((uint32_T)EPwm1Regs.TBPRD *
       rtb_CastToDouble1 * 0.01);
-  }
-
-  /* Fcn: '<Root>/Duty B [%]' incorporates:
-   *  Gain: '<Root>/-m (Leg B)'
-   */
-  rtb_CastToDouble1 = (xtq2_dq_doubleloop_fullspec_P.mLegB_Gain *
-                       rtb_Normalizedmodulationm + 1.0) * 50.0;
-
-  /* S-Function (c2802xpwm): '<Root>/ePWM2 Leg B (20 kHz)' */
-
-  /*-- Update CMPA value for ePWM2 --*/
-  {
+    EPwm2Regs.CMPA.bit.CMPA = 0U;
+  } else {
+    rtb_CastToDouble1 = -rtb_Normalizedmodulationm * 100.0;
+    EPwm1Regs.CMPA.bit.CMPA = 0U;
     EPwm2Regs.CMPA.bit.CMPA = (uint16_T)((uint32_T)EPwm2Regs.TBPRD *
       rtb_CastToDouble1 * 0.01);
   }

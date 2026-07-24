@@ -74,6 +74,23 @@ static void Firmware_ResetControlState(void)
         sizeof(xtq2_dq_doubleloop_fullspec_DW));
 }
 
+static uint16_t Firmware_PwmCompareForDuty(uint16_t period, float duty_percent)
+{
+    /*
+     * A leg clamped to exactly 0% for the half-cycle must stay hard off
+     * instead of being floored up to the minimum-pulse boundary below;
+     * only a leg with a genuine nonzero command needs that dead-time
+     * margin.
+     */
+    if (duty_percent <= 0.0f)
+    {
+        return 0u;
+    }
+
+    return ControlModel_ClampPwmCompare(period,
+        (uint16_T)((float)period * duty_percent * 0.01f));
+}
+
 static void Firmware_ApplyOpenLoopPwm(float vref_rms, float vbus)
 {
     float duty_a_percent;
@@ -81,20 +98,24 @@ static void Firmware_ApplyOpenLoopPwm(float vref_rms, float vbus)
 
     ControlModel_GetOpenLoopDuty(vref_rms, vbus,
         &duty_a_percent, &duty_b_percent);
-    EPwm1Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
-        EPwm1Regs.TBPRD, (uint16_T)((float)EPwm1Regs.TBPRD *
-        duty_a_percent * 0.01f));
-    EPwm2Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
-        EPwm2Regs.TBPRD, (uint16_T)((float)EPwm2Regs.TBPRD *
-        duty_b_percent * 0.01f));
+    EPwm1Regs.CMPA.bit.CMPA = Firmware_PwmCompareForDuty(
+        EPwm1Regs.TBPRD, duty_a_percent);
+    EPwm2Regs.CMPA.bit.CMPA = Firmware_PwmCompareForDuty(
+        EPwm2Regs.TBPRD, duty_b_percent);
 }
 
 static void Firmware_ClampClosedLoopPwm(void)
 {
-    EPwm1Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
-        EPwm1Regs.TBPRD, EPwm1Regs.CMPA.bit.CMPA);
-    EPwm2Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
-        EPwm2Regs.TBPRD, EPwm2Regs.CMPA.bit.CMPA);
+    if (EPwm1Regs.CMPA.bit.CMPA != 0u)
+    {
+        EPwm1Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
+            EPwm1Regs.TBPRD, EPwm1Regs.CMPA.bit.CMPA);
+    }
+    if (EPwm2Regs.CMPA.bit.CMPA != 0u)
+    {
+        EPwm2Regs.CMPA.bit.CMPA = ControlModel_ClampPwmCompare(
+            EPwm2Regs.TBPRD, EPwm2Regs.CMPA.bit.CMPA);
+    }
 }
 
 static uint16_t Firmware_ConfigurePwmTiming(const PWM_Profile_t *profile)
