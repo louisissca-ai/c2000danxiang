@@ -20,6 +20,7 @@ typedef struct
     float iref;
     uint16_t enable_cmd;
     uint16_t mode_cmd;
+    uint16_t pwm_frequency_khz;
 } Control_Setpoint_t;
 
 typedef struct

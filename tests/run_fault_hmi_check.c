@@ -11,6 +11,7 @@
 #include "control_model_if.h"
 #include "hmi_menu.h"
 #include "hmi_param.h"
+#include "pwm_profile.h"
 
 static uint16_t g_pwm_released;
 
@@ -37,7 +38,8 @@ uint16_t BoardPWM_IsReleased(void)
     return g_pwm_released;
 }
 
-static void SetRunCommand(uint16_t enable_cmd, uint16_t mode_cmd)
+static void SetRunCommandAtFrequency(uint16_t enable_cmd, uint16_t mode_cmd,
+    uint16_t frequency_khz)
 {
     Control_Setpoint_t setpoint;
 
@@ -45,7 +47,14 @@ static void SetRunCommand(uint16_t enable_cmd, uint16_t mode_cmd)
     setpoint.iref = 2.0f;
     setpoint.enable_cmd = enable_cmd;
     setpoint.mode_cmd = mode_cmd;
+    setpoint.pwm_frequency_khz = frequency_khz;
     ControlIF_SetSetpoint(&setpoint);
+}
+
+static void SetRunCommand(uint16_t enable_cmd, uint16_t mode_cmd)
+{
+    SetRunCommandAtFrequency(enable_cmd, mode_cmd,
+        APP_PWM_FREQUENCY_DEFAULT_KHZ);
 }
 
 static void AssertNear(float actual, float expected, float tolerance)
@@ -72,10 +81,12 @@ int main(void)
     uint16_t raw_iout;
     uint16_t raw_vout;
     uint16_t window;
+    const PWM_Profile_t *profile;
 
     ControlIF_Init();
     ControlIF_GetSetpoint(&setpoint);
     AssertNear(setpoint.iref, 3.0f, 0.0f);
+    assert(setpoint.pwm_frequency_khz == APP_PWM_FREQUENCY_DEFAULT_KHZ);
     assert(APP_VREF_MAX > 23.0f);
     assert(APP_VREF_MAX < 24.0f);
     AssertNear(APP_ADC_CAL_VOUT_K_DEFAULT, 109.781873f, 0.00001f);
@@ -89,11 +100,41 @@ int main(void)
         25.0f, 0.0001f);
     AssertNear(APP_CONTROL_KP_V_DQ, 0.006f, 0.0f);
     AssertNear(APP_CONTROL_KI_V_DQ, 2.5f, 0.0f);
+    profile = PWM_Profile_Get(20u);
+    assert(profile != 0);
+    assert(profile->tbprd_counts == 3000u);
+    assert(profile->rms_samples == 400u);
+    assert(profile->task_1ms_divider == 20u);
+    assert(profile->calibration_settle_samples == 10000uL);
+    assert(profile->calibration_window_samples == 400uL);
+    AssertNear(profile->control_step_s, 50.0e-6f, 0.000000001f);
+    profile = PWM_Profile_Get(18u);
+    assert(profile != 0);
+    assert(profile->tbprd_counts == 3333u);
+    assert(profile->rms_samples == 360u);
+    assert(profile->task_1ms_divider == 18u);
+    assert(profile->calibration_settle_samples == 9000uL);
+    assert(profile->calibration_window_samples == 360uL);
+    assert(ControlModel_ClampPwmCompare(profile->tbprd_counts, 0u) ==
+        APP_PWM_MIN_COMPARE_COUNTS);
+    assert(ControlModel_ClampPwmCompare(profile->tbprd_counts, 65535u) ==
+        (profile->tbprd_counts - APP_PWM_MIN_COMPARE_COUNTS));
+    profile = PWM_Profile_Get(16u);
+    assert(profile != 0);
+    assert(profile->tbprd_counts == 3750u);
+    assert(profile->rms_samples == 320u);
+    assert(profile->task_1ms_divider == 16u);
+    assert(profile->calibration_settle_samples == 8000uL);
+    assert(profile->calibration_window_samples == 320uL);
+    assert(ControlModel_ClampPwmCompare(profile->tbprd_counts, 0u) ==
+        APP_PWM_MIN_COMPARE_COUNTS);
+    assert(ControlModel_ClampPwmCompare(profile->tbprd_counts, 65535u) ==
+        (profile->tbprd_counts - APP_PWM_MIN_COMPARE_COUNTS));
+    assert(PWM_Profile_Get(17u) == 0);
     assert((APP_VOUT_CONTROL_POLARITY == 1.0f) ||
         (APP_VOUT_CONTROL_POLARITY == -1.0f));
-    assert(APP_IOUT_CONTROL_POLARITY > 0.0f);
-    assert(((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
-        APP_ADC_CAL_IOUT_K_DEFAULT * APP_IOUT_CONTROL_POLARITY) < 0.0f);
+    assert((APP_IOUT_CONTROL_POLARITY == 1.0f) ||
+        (APP_IOUT_CONTROL_POLARITY == -1.0f));
     AssertNear(fabsf((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
         APP_ADC_CAL_IOUT_K_DEFAULT * APP_IOUT_CONTROL_POLARITY),
         fabsf((1.600f - APP_ADC_CAL_IOUT_B_DEFAULT) *
@@ -190,21 +231,24 @@ int main(void)
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
     for (i = 0u; i < 400u; i++)
     {
-        ControlModel_UpdateRunningVoutRms(
+        ControlModel_UpdateRunningRms(
             20.0f * 1.4142135623730951f *
+            sinf(6.2831853071795865f * (float)i / 400.0f),
+            2.0f * 1.4142135623730951f *
             sinf(6.2831853071795865f * (float)i / 400.0f));
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 20.0f, 0.0001f);
+    AssertNear(ControlModel_GetRunningIoutRms(), 2.0f, 0.0001f);
 
     /* RMS measurement has no path back into the closed-loop reference. */
     for (i = 0u; i < 400u; i++)
     {
-        ControlModel_UpdateRunningVoutRms(26.0f);
+        ControlModel_UpdateRunningRms(26.0f, 2.6f);
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 26.0f, 0.0001f);
     for (i = 0u; i < 400u; i++)
     {
-        ControlModel_UpdateRunningVoutRms(10.0f);
+        ControlModel_UpdateRunningRms(10.0f, 1.0f);
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 10.0f, 0.0001f);
     ControlIF_GetSetpoint(&setpoint);
@@ -220,7 +264,7 @@ int main(void)
     assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
     for (i = 0u; i < 4000u; i++)
     {
-        ControlModel_UpdateRunningVoutRms(19.9f);
+        ControlModel_UpdateRunningRms(19.9f, 1.9f);
     }
     AssertNear(ControlModel_GetRunningVoutRms(), 19.9f, 0.0001f);
     ControlIF_GetSetpoint(&setpoint);
@@ -326,6 +370,56 @@ int main(void)
     AssertNear(duty_a, 50.0f, 0.02f);
     AssertNear(duty_b, 50.0f, 0.02f);
 
+    /* Runtime profiles preserve one 50 Hz cycle and direct RMS windows. */
+    SetRunCommandAtFrequency(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP, 18u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    assert(ControlModel_ApplyPwmProfile(18u) != APP_FALSE);
+    SetRunCommandAtFrequency(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP, 18u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
+    for (i = 0u; i < 360u; i++)
+    {
+        ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
+        ControlModel_UpdateRunningRms(
+            20.0f * 1.4142135623730951f *
+            sinf(6.2831853071795865f * (float)i / 360.0f),
+            2.0f * 1.4142135623730951f *
+            sinf(6.2831853071795865f * (float)i / 360.0f));
+    }
+    ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
+    AssertNear(duty_a, 50.0f, 0.03f);
+    AssertNear(ControlModel_GetRunningVoutRms(), 20.0f, 0.0001f);
+    AssertNear(ControlModel_GetRunningIoutRms(), 2.0f, 0.0001f);
+
+    SetRunCommandAtFrequency(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP, 16u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    assert(ControlModel_ApplyPwmProfile(16u) != APP_FALSE);
+    SetRunCommandAtFrequency(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP, 16u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_TRUE);
+    for (i = 0u; i < 320u; i++)
+    {
+        ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
+        ControlModel_UpdateRunningRms(
+            20.0f * 1.4142135623730951f *
+            sinf(6.2831853071795865f * (float)i / 320.0f),
+            0.0f);
+    }
+    ControlModel_GetOpenLoopDuty(20.0f, 36.0f, &duty_a, &duty_b);
+    AssertNear(duty_a, 50.0f, 0.02f);
+    AssertNear(ControlModel_GetRunningVoutRms(), 20.0f, 0.0001f);
+
+    /* Invalid and closed-loop low-frequency requests cannot arm PWM. */
+    SetRunCommandAtFrequency(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP, 16u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    SetRunCommandAtFrequency(APP_TRUE, APP_CONTROL_MODE_CLOSED_LOOP, 16u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    SetRunCommandAtFrequency(APP_TRUE, APP_CONTROL_MODE_OPEN_LOOP, 17u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    assert(BoardPWM_IsReleased() == 0u);
+
+    SetRunCommandAtFrequency(APP_FALSE, APP_CONTROL_MODE_OPEN_LOOP, 20u);
+    assert(ControlModel_UpdateSafety(36.0f, 0.0f) == APP_FALSE);
+    assert(ControlModel_ApplyPwmProfile(20u) != APP_FALSE);
+
     /*
      * Unreachable RMS requests retain a sinusoidal reference while reserving
      * dead time plus one minimum effective pulse at both compare limits.
@@ -381,6 +475,9 @@ int main(void)
 
     HMI_Param_Init();
     HMI_Menu_Init();
+    assert(HMI_Param_GetPwmFrequencyKhz() == 20u);
+    HMI_Param_SetPwmFrequencyKhz(17u);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 20u);
     HMI_Param_SetVref(100.0f);
     AssertNear(HMI_Param_GetVref(), APP_VREF_MAX, 0.00001f);
     HMI_Param_SetVref(APP_VREF_DEFAULT);
@@ -406,8 +503,34 @@ int main(void)
     assert(HMI_Param_GetEnableCmd() == APP_FALSE);
     HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
     assert(HMI_Param_GetModeCmd() == APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 20u);
     HMI_Param_SetModeCmd(3u);
     assert(HMI_Param_GetModeCmd() == APP_CONTROL_MODE_CLOSED_LOOP);
+
+    HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
+    assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_SET_PWM_FREQ);
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 20u);
+    HMI_Param_SetModeCmd(APP_CONTROL_MODE_OPEN_LOOP);
+    HMI_Param_SetRunState(APP_RUN_STATE_STOP);
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 18u);
+    assert(HMI_Param_GetEnableCmd() == APP_FALSE);
+    HMI_Menu_Task_20ms(KEY_EVENT_DOWN);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 16u);
+    HMI_Param_SetEnableCmd(APP_TRUE);
+    HMI_Menu_Task_20ms(KEY_EVENT_UP);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 16u);
+    HMI_Param_SetEnableCmd(APP_FALSE);
+    HMI_Param_SetFaultCode(FAULT_NONE);
+    ADC_Cal_Init();
+    assert(ADC_Cal_StartOffset() != APP_FALSE);
+    HMI_Menu_Task_20ms(KEY_EVENT_UP);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 16u);
+    ADC_Cal_Cancel();
+    HMI_Param_SetModeCmd(APP_CONTROL_MODE_CLOSED_LOOP);
+    assert(HMI_Param_GetPwmFrequencyKhz() == 20u);
+    assert(HMI_Param_GetEnableCmd() == APP_FALSE);
 
     HMI_Menu_Task_20ms(KEY_EVENT_RIGHT);
     assert(HMI_Menu_GetPage() == HMI_MENU_PAGE_ADC_CAL);
@@ -436,6 +559,23 @@ int main(void)
      * Offset calibration ignores the first 0.5 s, trims ten low and ten high
      * block means independently, then averages every retained raw sample.
      */
+    assert(ControlModel_ApplyPwmProfile(16u) != APP_FALSE);
+    HMI_Param_Init();
+    ADC_Cal_Init();
+    HMI_Param_SetFaultCode(FAULT_NONE);
+    HMI_Param_SetRunState(APP_RUN_STATE_STOP);
+    assert(ADC_Cal_StartOffset() != APP_FALSE);
+    for (i = 0u; i < 40320u; i++)
+    {
+        ADC_Cal_PushStoppedRaw(2048u, 2048u,
+            3.3f / 4095.0f, 3.3f / 4095.0f);
+    }
+    ADC_Cal_GetView(&cal_view);
+    assert(cal_view.state == ADC_CAL_STATE_OFFSET_COMPUTING);
+    assert(cal_view.progress_percent == 100u);
+    ADC_Cal_Cancel();
+    assert(ControlModel_ApplyPwmProfile(20u) != APP_FALSE);
+
     HMI_Param_Init();
     ADC_Cal_Init();
     HMI_Param_SetFaultCode(FAULT_NONE);

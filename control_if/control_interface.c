@@ -64,6 +64,7 @@ void ControlIF_Init(void)
     setpoint_default.iref = APP_IREF_DEFAULT;
     setpoint_default.enable_cmd = APP_FALSE;
     setpoint_default.mode_cmd = 0u;
+    setpoint_default.pwm_frequency_khz = APP_PWM_FREQUENCY_DEFAULT_KHZ;
 
     feedback_default.vin = 0.0f;
     feedback_default.vout = 0.0f;

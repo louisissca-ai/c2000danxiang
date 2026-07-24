@@ -15,16 +15,16 @@
 #include "app_main.h"
 #include "app_types.h"
 #include "board.h"
+#include "control_interface.h"
 #include "control_model_if.h"
 #include "hmi_param.h"
-
-#define CONTROL_TASK_1MS_DIVIDER   20u
-#define CONTROL_INV_SQRT2          0.7071067811865475f
+#include "pwm_profile.h"
 
 volatile int IsrOverrun = 0;
 static boolean_T g_overrun_flag;
 static uint16_t g_task_1ms_divider;
 static uint16_t g_last_control_enabled;
+static const PWM_Profile_t *g_active_pwm_profile;
 
 volatile boolean_T stopRequested;
 volatile boolean_T runModel;
@@ -97,32 +97,72 @@ static void Firmware_ClampClosedLoopPwm(void)
         EPwm2Regs.TBPRD, EPwm2Regs.CMPA.bit.CMPA);
 }
 
-static uint16_t Firmware_ConfigurePwmTiming(void)
+static uint16_t Firmware_ConfigurePwmTiming(const PWM_Profile_t *profile)
 {
     /*
      * TBCLKSYNC is still disabled here, so establish the application timing
      * instead of faulting on reset/generated-register values.
      */
     EALLOW;
-    EPwm1Regs.TBPRD = APP_PWM_TBPRD_COUNTS;
-    EPwm2Regs.TBPRD = APP_PWM_TBPRD_COUNTS;
+    EPwm1Regs.TBPRD = profile->tbprd_counts;
+    EPwm2Regs.TBPRD = profile->tbprd_counts;
     EPwm1Regs.TBCTR = 0u;
     EPwm2Regs.TBCTR = 0u;
-    EPwm1Regs.CMPA.bit.CMPA = APP_PWM_TBPRD_COUNTS / 2u;
-    EPwm2Regs.CMPA.bit.CMPA = APP_PWM_TBPRD_COUNTS / 2u;
+    EPwm1Regs.CMPA.bit.CMPA = profile->tbprd_counts / 2u;
+    EPwm2Regs.CMPA.bit.CMPA = profile->tbprd_counts / 2u;
     EPwm1Regs.DBRED.bit.DBRED = APP_PWM_DEADTIME_COUNTS;
     EPwm1Regs.DBFED.bit.DBFED = APP_PWM_DEADTIME_COUNTS;
     EPwm2Regs.DBRED.bit.DBRED = APP_PWM_DEADTIME_COUNTS;
     EPwm2Regs.DBFED.bit.DBFED = APP_PWM_DEADTIME_COUNTS;
     EDIS;
 
-    return ((EPwm1Regs.TBPRD == APP_PWM_TBPRD_COUNTS) &&
-        (EPwm2Regs.TBPRD == APP_PWM_TBPRD_COUNTS) &&
+    return ((EPwm1Regs.TBPRD == profile->tbprd_counts) &&
+        (EPwm2Regs.TBPRD == profile->tbprd_counts) &&
         (EPwm1Regs.DBRED.bit.DBRED == APP_PWM_DEADTIME_COUNTS) &&
         (EPwm1Regs.DBFED.bit.DBFED == APP_PWM_DEADTIME_COUNTS) &&
         (EPwm2Regs.DBRED.bit.DBRED == APP_PWM_DEADTIME_COUNTS) &&
         (EPwm2Regs.DBFED.bit.DBFED == APP_PWM_DEADTIME_COUNTS)) ?
         APP_TRUE : APP_FALSE;
+}
+
+static uint16_t Firmware_ApplyRequestedPwmFrequency(void)
+{
+    Control_Setpoint_t setpoint;
+    const PWM_Profile_t *profile;
+
+    ControlIF_GetSetpoint(&setpoint);
+    if (setpoint.pwm_frequency_khz ==
+        ControlModel_GetActivePwmFrequencyKhz())
+    {
+        return APP_TRUE;
+    }
+
+    profile = PWM_Profile_Get(setpoint.pwm_frequency_khz);
+    if ((profile == 0) ||
+        ((setpoint.mode_cmd == APP_CONTROL_MODE_CLOSED_LOOP) &&
+         (setpoint.pwm_frequency_khz != APP_PWM_FREQUENCY_DEFAULT_KHZ)))
+    {
+        return APP_FALSE;
+    }
+
+    BoardPWM_ForceSafe();
+    EALLOW;
+    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 0u;
+    EDIS;
+    if (Firmware_ConfigurePwmTiming(profile) == APP_FALSE)
+    {
+        return APP_FALSE;
+    }
+    g_task_1ms_divider = 0u;
+    if (ControlModel_ApplyPwmProfile(profile->frequency_khz) == APP_FALSE)
+    {
+        return APP_FALSE;
+    }
+    g_active_pwm_profile = profile;
+    EALLOW;
+    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1u;
+    EDIS;
+    return APP_TRUE;
 }
 
 static void Firmware_ConfigureControlInterrupt(void)
@@ -142,16 +182,6 @@ static void Firmware_ConfigureControlInterrupt(void)
 
     PieCtrlRegs.PIEIER1.bit.INTx2 = 1u;
     IER |= M_INT1;
-}
-
-static float Firmware_GetIoutRms(void)
-{
-    float id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
-        xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
-    float iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
-        xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
-
-    return sqrtf(id * id + iq * iq) * CONTROL_INV_SQRT2;
 }
 
 void rt_OneStep(void)
@@ -199,6 +229,10 @@ void rt_OneStep(void)
             Firmware_ResetControlState();
         }
         g_last_control_enabled = APP_FALSE;
+        if (Firmware_ApplyRequestedPwmFrequency() == APP_FALSE)
+        {
+            ControlModel_TripFault(FAULT_PWM);
+        }
         ADC_Cal_PushStoppedRaw(AdcaResultRegs.ADCRESULT0,
             AdccResultRegs.ADCRESULT0,
             (float)xtq2_dq_doubleloop_fullspec_P.Gain11_Gain,
@@ -213,7 +247,7 @@ void rt_OneStep(void)
         g_last_control_enabled = APP_TRUE;
 
         vref_ramp = ControlModel_GetVrefRamp();
-        ControlModel_UpdateRunningVoutRms(vout_sample);
+        ControlModel_UpdateRunningRms(vout_sample, iout_sample);
         xtq2_dq_doubleloop_fullspec_P.Vout_rms_ref = (control_mode ==
             APP_CONTROL_MODE_CLOSED_LOOP) ? (real_T)vref_ramp : 0.0;
 
@@ -228,19 +262,25 @@ void rt_OneStep(void)
                 (float)xtq2_dq_doubleloop_fullspec_P.Vin);
         }
 
-        iout_sample = Firmware_AdcToSignal(
-            xtq2_dq_doubleloop_fullspec_B.ADCCCurrent20kHz,
-            xtq2_dq_doubleloop_fullspec_P.Gain1_Gain,
-            xtq2_dq_doubleloop_fullspec_P.Constant1_Value,
-            xtq2_dq_doubleloop_fullspec_P.Gain4_Gain);
-        vd = (float)(xtq2_dq_doubleloop_fullspec_P.VdLPF_NumCoef *
-            xtq2_dq_doubleloop_fullspec_DW.VdLPF_states);
-        vq = (float)(xtq2_dq_doubleloop_fullspec_P.VqLPF_NumCoef *
-            xtq2_dq_doubleloop_fullspec_DW.VqLPF_states);
-        id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
-            xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
-        iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
-            xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
+        if (ControlModel_GetActivePwmFrequencyKhz() ==
+            APP_PWM_FREQUENCY_DEFAULT_KHZ)
+        {
+            vd = (float)(xtq2_dq_doubleloop_fullspec_P.VdLPF_NumCoef *
+                xtq2_dq_doubleloop_fullspec_DW.VdLPF_states);
+            vq = (float)(xtq2_dq_doubleloop_fullspec_P.VqLPF_NumCoef *
+                xtq2_dq_doubleloop_fullspec_DW.VqLPF_states);
+            id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
+                xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
+            iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
+                xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
+        }
+        else
+        {
+            vd = 0.0f;
+            vq = 0.0f;
+            id = 0.0f;
+            iq = 0.0f;
+        }
         if (starting != APP_FALSE)
         {
             /*
@@ -265,7 +305,7 @@ void rt_OneStep(void)
                 duty_percent = Firmware_GetDutyPercent();
                 ControlModel_SetFeedback(
                     (float)xtq2_dq_doubleloop_fullspec_P.Vin,
-                    vout_rms, Firmware_GetIoutRms(),
+                    vout_rms, ControlModel_GetRunningIoutRms(),
                     vout_sample, iout_sample, vd, vq, id, iq, duty_percent);
             }
             else
@@ -280,7 +320,7 @@ void rt_OneStep(void)
     }
 
     g_task_1ms_divider++;
-    if (g_task_1ms_divider >= CONTROL_TASK_1MS_DIVIDER)
+    if (g_task_1ms_divider >= g_active_pwm_profile->task_1ms_divider)
     {
         g_task_1ms_divider = 0u;
         ControlModel_Task1ms();
@@ -314,12 +354,16 @@ interrupt void Firmware_ADCC1_ISR(void)
 
 int main(void)
 {
+    const PWM_Profile_t *default_profile;
+
     c2000_flash_init();
     init_board();
 
     rtmSetErrorStatus(xtq2_dq_doubleloop_fullspec_M, 0);
     xtq2_dq_doubleloop_fullspec_initialize();
     ControlModel_Init();
+    default_profile = PWM_Profile_Get(APP_PWM_FREQUENCY_DEFAULT_KHZ);
+    g_active_pwm_profile = default_profile;
     xtq2_dq_doubleloop_fullspec_P.Vin = (real_T)APP_VBUS_NOMINAL_V;
     xtq2_dq_doubleloop_fullspec_P.Kad =
         (real_T)APP_CONTROL_ACTIVE_DAMPING_GAIN;
@@ -334,7 +378,8 @@ int main(void)
 
     globalInterruptDisable();
     runModel = ((rtmGetErrorStatus(xtq2_dq_doubleloop_fullspec_M) == NULL) &&
-        (Firmware_ConfigurePwmTiming() != APP_FALSE));
+        (default_profile != 0) &&
+        (Firmware_ConfigurePwmTiming(default_profile) != APP_FALSE));
     if (runModel != false)
     {
         Firmware_ConfigureControlInterrupt();

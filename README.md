@@ -111,12 +111,13 @@ OLED 主页面按一次 RIGHT 或 DOWN 进入 `DQ Monitor` 页面，直接观察
 gcc -DUNIT_TEST -I app -I control_if -I drivers_user -I hmi `
   tests/run_fault_hmi_check.c control_if/control_interface.c `
   control_if/control_model_if.c hmi/hmi_param.c hmi/hmi_menu.c `
-  app/adc_calibration.c `
+  app/adc_calibration.c app/pwm_profile.c -lm `
   -o tests/run_fault_hmi_check.exe
 tests/run_fault_hmi_check.exe
 
 gcc -DUNIT_TEST -I app -I control_if -I drivers_user -I hmi `
-  tests/run_hmi_display_check.c hmi/hmi_display.c hmi/hmi_param.c `
+  tests/run_hmi_display_check.c app/pwm_profile.c `
+  hmi/hmi_display.c hmi/hmi_param.c -lm `
   -o tests/run_hmi_display_check.exe
 tests/run_hmi_display_check.exe
 

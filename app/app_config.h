@@ -13,6 +13,7 @@
 #define APP_OUTPUT_FREQUENCY_HZ 50.0f
 #define APP_VBUS_NOMINAL_V      36.0f
 
+#define APP_PWM_FREQUENCY_DEFAULT_KHZ       20u
 #define APP_PWM_TBPRD_COUNTS              3000u
 #define APP_PWM_DEADTIME_COUNTS            24u
 /* ponytail: 24 counts assumes the present driver accepts a 200 ns effective pulse; raise it after gate-waveform calibration if needed. */

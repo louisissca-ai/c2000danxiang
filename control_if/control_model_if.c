@@ -7,18 +7,19 @@
 #include "app_types.h"
 #include "board.h"
 #include "control_interface.h"
+#include "pwm_profile.h"
 
-#define CONTROL_MODEL_STEP_S          50.0e-6f
 #define CONTROL_MODEL_VREF_RATE       72.0f
 #define CONTROL_MODEL_ABS_VALID_LIMIT 1000000.0f
 #define CONTROL_MODEL_SQRT2           1.4142135623730951f
 #define CONTROL_MODEL_TWO_PI          6.2831853071795865f
-#define CONTROL_MODEL_RMS_SAMPLES     400u
 
 static float g_control_model_vref_ramp;
 static float g_control_model_open_loop_phase;
 static float g_control_model_running_vout_square_sum;
+static float g_control_model_running_iout_square_sum;
 static float g_control_model_running_vout_rms;
+static float g_control_model_running_iout_rms;
 static float g_control_model_vout_square_sum;
 static float g_control_model_iout_square_sum;
 static float g_control_model_stopped_vout_rms;
@@ -26,8 +27,10 @@ static float g_control_model_stopped_iout_rms;
 static uint16_t g_control_model_fault_code;
 static uint16_t g_control_model_pwm_allowed;
 static uint16_t g_control_model_active_mode;
+static uint16_t g_control_model_active_pwm_frequency_khz;
 static uint16_t g_control_model_running_rms_sample_count;
 static uint16_t g_control_model_rms_sample_count;
+static const PWM_Profile_t *g_control_model_pwm_profile;
 
 #if APP_SOFTWARE_OCP_ENABLED
 static float ControlModel_Abs(float value)
@@ -61,7 +64,9 @@ void ControlModel_ResetStoppedFeedback(void)
 static void ControlModel_ResetRunningRms(void)
 {
     g_control_model_running_vout_square_sum = 0.0f;
+    g_control_model_running_iout_square_sum = 0.0f;
     g_control_model_running_vout_rms = 0.0f;
+    g_control_model_running_iout_rms = 0.0f;
     g_control_model_running_rms_sample_count = 0u;
 }
 
@@ -90,6 +95,10 @@ void ControlModel_Init(void)
     g_control_model_fault_code = FAULT_NONE;
     g_control_model_pwm_allowed = APP_FALSE;
     g_control_model_active_mode = APP_CONTROL_MODE_CLOSED_LOOP;
+    g_control_model_pwm_profile = PWM_Profile_Get(
+        APP_PWM_FREQUENCY_DEFAULT_KHZ);
+    g_control_model_active_pwm_frequency_khz =
+        APP_PWM_FREQUENCY_DEFAULT_KHZ;
 }
 
 void ControlModel_Task1ms(void)
@@ -107,7 +116,10 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
 
     ControlIF_GetSetpoint(&setpoint);
 
-    if (ControlModel_IsModeValid(setpoint.mode_cmd) == APP_FALSE)
+    if ((ControlModel_IsModeValid(setpoint.mode_cmd) == APP_FALSE) ||
+        (PWM_Profile_Get(setpoint.pwm_frequency_khz) == 0) ||
+        ((setpoint.mode_cmd == APP_CONTROL_MODE_CLOSED_LOOP) &&
+         (setpoint.pwm_frequency_khz != APP_PWM_FREQUENCY_DEFAULT_KHZ)))
     {
         ControlModel_DisablePwm();
         return APP_FALSE;
@@ -122,6 +134,12 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
     }
 
     if (setpoint.mode_cmd != g_control_model_active_mode)
+    {
+        ControlModel_DisablePwm();
+        return APP_FALSE;
+    }
+    if (setpoint.pwm_frequency_khz !=
+        g_control_model_active_pwm_frequency_khz)
     {
         ControlModel_DisablePwm();
         return APP_FALSE;
@@ -203,6 +221,29 @@ void ControlModel_TripFault(uint16_t fault_code)
     ControlModel_DisablePwm();
 }
 
+uint16_t ControlModel_ApplyPwmProfile(uint16_t frequency_khz)
+{
+    const PWM_Profile_t *profile = PWM_Profile_Get(frequency_khz);
+
+    if (profile == 0)
+    {
+        return APP_FALSE;
+    }
+
+    g_control_model_pwm_profile = profile;
+    g_control_model_active_pwm_frequency_khz = frequency_khz;
+    g_control_model_vref_ramp = 0.0f;
+    g_control_model_open_loop_phase = 0.0f;
+    ControlModel_ResetStoppedFeedback();
+    ControlModel_ResetRunningRms();
+    return APP_TRUE;
+}
+
+uint16_t ControlModel_GetActivePwmFrequencyKhz(void)
+{
+    return g_control_model_active_pwm_frequency_khz;
+}
+
 float ControlModel_GetVrefRamp(void)
 {
     Control_Setpoint_t setpoint;
@@ -215,7 +256,8 @@ float ControlModel_GetVrefRamp(void)
     }
 
     ControlIF_GetSetpoint(&setpoint);
-    delta = CONTROL_MODEL_VREF_RATE * CONTROL_MODEL_STEP_S;
+    delta = CONTROL_MODEL_VREF_RATE *
+        g_control_model_pwm_profile->control_step_s;
 
     if (g_control_model_vref_ramp < setpoint.vref)
     {
@@ -237,25 +279,36 @@ float ControlModel_GetVrefRamp(void)
     return g_control_model_vref_ramp;
 }
 
-void ControlModel_UpdateRunningVoutRms(float vout_sample)
+void ControlModel_UpdateRunningRms(float vout_sample, float iout_sample)
 {
-    if (ControlModel_IsFiniteReasonable(vout_sample) == APP_FALSE)
+    if ((ControlModel_IsFiniteReasonable(vout_sample) == APP_FALSE) ||
+        (ControlModel_IsFiniteReasonable(iout_sample) == APP_FALSE))
     {
         ControlModel_ResetRunningRms();
         return;
     }
 
     g_control_model_running_vout_square_sum += vout_sample * vout_sample;
+    g_control_model_running_iout_square_sum += iout_sample * iout_sample;
     g_control_model_running_rms_sample_count++;
     if (g_control_model_running_rms_sample_count >=
-        CONTROL_MODEL_RMS_SAMPLES)
+        g_control_model_pwm_profile->rms_samples)
     {
         g_control_model_running_vout_rms = sqrtf(
             g_control_model_running_vout_square_sum /
-            (float)CONTROL_MODEL_RMS_SAMPLES);
+            (float)g_control_model_pwm_profile->rms_samples);
+        g_control_model_running_iout_rms = sqrtf(
+            g_control_model_running_iout_square_sum /
+            (float)g_control_model_pwm_profile->rms_samples);
         g_control_model_running_vout_square_sum = 0.0f;
+        g_control_model_running_iout_square_sum = 0.0f;
         g_control_model_running_rms_sample_count = 0u;
     }
+}
+
+float ControlModel_GetRunningIoutRms(void)
+{
+    return g_control_model_running_iout_rms;
 }
 
 float ControlModel_GetRunningVoutRms(void)
@@ -293,7 +346,8 @@ void ControlModel_GetOpenLoopDuty(float vref_rms, float vbus,
     if (g_control_model_pwm_allowed != APP_FALSE)
     {
         g_control_model_open_loop_phase += CONTROL_MODEL_TWO_PI *
-            APP_OUTPUT_FREQUENCY_HZ * CONTROL_MODEL_STEP_S;
+            APP_OUTPUT_FREQUENCY_HZ *
+            g_control_model_pwm_profile->control_step_s;
         if (g_control_model_open_loop_phase >= CONTROL_MODEL_TWO_PI)
         {
             g_control_model_open_loop_phase -= CONTROL_MODEL_TWO_PI;
@@ -335,14 +389,15 @@ void ControlModel_UpdateStoppedFeedback(float vin, float vout_sample,
         g_control_model_iout_square_sum += iout_sample * iout_sample;
         g_control_model_rms_sample_count++;
 
-        if (g_control_model_rms_sample_count >= CONTROL_MODEL_RMS_SAMPLES)
+        if (g_control_model_rms_sample_count >=
+            g_control_model_pwm_profile->rms_samples)
         {
             g_control_model_stopped_vout_rms = sqrtf(
                 g_control_model_vout_square_sum /
-                (float)CONTROL_MODEL_RMS_SAMPLES);
+                (float)g_control_model_pwm_profile->rms_samples);
             g_control_model_stopped_iout_rms = sqrtf(
                 g_control_model_iout_square_sum /
-                (float)CONTROL_MODEL_RMS_SAMPLES);
+                (float)g_control_model_pwm_profile->rms_samples);
             g_control_model_vout_square_sum = 0.0f;
             g_control_model_iout_square_sum = 0.0f;
             g_control_model_rms_sample_count = 0u;

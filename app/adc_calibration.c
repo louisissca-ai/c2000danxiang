@@ -6,16 +6,12 @@
 #include "control_interface.h"
 #include "control_model_if.h"
 #include "hmi_param.h"
+#include "pwm_profile.h"
 
-#define ADC_CAL_SETTLE_SAMPLES       10000uL
-#define ADC_CAL_WINDOW_SAMPLES         400uL
 #define ADC_CAL_WINDOW_COUNT           101u
 #define ADC_CAL_TRIM_WINDOW_COUNT       10u
 #define ADC_CAL_KEPT_WINDOW_COUNT \
     (ADC_CAL_WINDOW_COUNT - (2u * ADC_CAL_TRIM_WINDOW_COUNT))
-#define ADC_CAL_OFFSET_TOTAL_SAMPLES \
-    (ADC_CAL_SETTLE_SAMPLES + \
-    (ADC_CAL_WINDOW_SAMPLES * ADC_CAL_WINDOW_COUNT))
 #define ADC_CAL_RMS_MIN              0.000001f
 
 static volatile ADC_Cal_State_t g_state;
@@ -23,6 +19,8 @@ static volatile ADC_Cal_Error_t g_error;
 static volatile uint32_t g_sample_count;
 static volatile uint32_t g_window_sample_count;
 static volatile uint32_t g_window_index;
+static uint32_t g_settle_samples;
+static uint32_t g_window_samples;
 static volatile uint32_t g_vout_window_sum;
 static volatile uint32_t g_iout_window_sum;
 static volatile uint32_t g_vout_window_sums[ADC_CAL_WINDOW_COUNT];
@@ -74,7 +72,7 @@ static float ADC_Cal_TrimmedRawMean(volatile uint32_t *window_sums)
     }
 
     return (float)selected_sum /
-        (float)(ADC_CAL_KEPT_WINDOW_COUNT * ADC_CAL_WINDOW_SAMPLES);
+        (float)(ADC_CAL_KEPT_WINDOW_COUNT * g_window_samples);
 }
 
 static uint16_t ADC_Cal_IsFinite(float value)
@@ -118,11 +116,16 @@ static uint16_t ADC_Cal_ParamsValid(const ADC_Cal_Params_t *params)
 
 void ADC_Cal_Init(void)
 {
+    const PWM_Profile_t *profile = PWM_Profile_Get(
+        APP_PWM_FREQUENCY_DEFAULT_KHZ);
+
     g_state = ADC_CAL_STATE_IDLE;
     g_error = ADC_CAL_ERROR_NONE;
     g_sample_count = 0uL;
     g_window_sample_count = 0uL;
     g_window_index = 0uL;
+    g_settle_samples = profile->calibration_settle_samples;
+    g_window_samples = profile->calibration_window_samples;
     g_vout_window_sum = 0uL;
     g_iout_window_sum = 0uL;
     g_vout_adc_gain = 0.0f;
@@ -137,12 +140,14 @@ void ADC_Cal_Init(void)
 uint16_t ADC_Cal_StartOffset(void)
 {
     HMI_Data_t data;
+    const PWM_Profile_t *profile;
 
     HMI_Param_GetData(&data);
+    profile = PWM_Profile_Get(ControlModel_GetActivePwmFrequencyKhz());
     if ((ADC_Cal_IsBusy() != APP_FALSE) ||
         (data.enable_cmd != APP_FALSE) ||
         (data.run_state != APP_RUN_STATE_STOP) ||
-        (data.fault_code != FAULT_NONE))
+        (data.fault_code != FAULT_NONE) || (profile == 0))
     {
         g_state = ADC_CAL_STATE_ERROR;
         g_error = ADC_CAL_ERROR_STATE;
@@ -154,6 +159,8 @@ uint16_t ADC_Cal_StartOffset(void)
     g_window_index = 0uL;
     g_vout_window_sum = 0uL;
     g_iout_window_sum = 0uL;
+    g_settle_samples = profile->calibration_settle_samples;
+    g_window_samples = profile->calibration_window_samples;
     g_vout_adc_gain = 0.0f;
     g_iout_adc_gain = 0.0f;
     g_error = ADC_CAL_ERROR_NONE;
@@ -173,7 +180,7 @@ void ADC_Cal_PushStoppedRaw(uint16_t vout_raw, uint16_t iout_raw,
     if (g_state == ADC_CAL_STATE_OFFSET_SETTLING)
     {
         g_sample_count++;
-        if (g_sample_count >= ADC_CAL_SETTLE_SAMPLES)
+        if (g_sample_count >= g_settle_samples)
         {
             g_state = ADC_CAL_STATE_OFFSET_SAMPLING;
         }
@@ -191,7 +198,7 @@ void ADC_Cal_PushStoppedRaw(uint16_t vout_raw, uint16_t iout_raw,
     g_window_sample_count++;
     g_sample_count++;
 
-    if (g_window_sample_count >= ADC_CAL_WINDOW_SAMPLES)
+    if (g_window_sample_count >= g_window_samples)
     {
         g_vout_window_sums[g_window_index] = g_vout_window_sum;
         g_iout_window_sums[g_window_index] = g_iout_window_sum;
@@ -330,7 +337,8 @@ void ADC_Cal_GetView(ADC_Cal_View_t *view)
     view->progress_percent = ((g_state == ADC_CAL_STATE_OFFSET_SETTLING) ||
         (g_state == ADC_CAL_STATE_OFFSET_SAMPLING)) ?
         (uint16_t)((100uL * g_sample_count) /
-        ADC_CAL_OFFSET_TOTAL_SAMPLES) :
+        (g_settle_samples +
+        (g_window_samples * ADC_CAL_WINDOW_COUNT))) :
         ((g_state == ADC_CAL_STATE_OFFSET_COMPUTING) ? 100u : 0u);
     view->true_rms = g_true_rms[g_channel];
     view->measured_rms = g_measured_rms;
