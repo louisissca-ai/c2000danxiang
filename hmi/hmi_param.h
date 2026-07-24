@@ -33,7 +33,6 @@ typedef struct
     float iout_adc_k;
     uint16_t enable_cmd;
     uint16_t mode_cmd;
-    uint16_t pwm_frequency_khz;
     uint16_t run_state;
     uint16_t fault_code;
 } HMI_Data_t;
@@ -49,7 +48,6 @@ float HMI_Param_GetIoutAdcB(void);
 float HMI_Param_GetIoutAdcK(void);
 uint16_t HMI_Param_GetEnableCmd(void);
 uint16_t HMI_Param_GetModeCmd(void);
-uint16_t HMI_Param_GetPwmFrequencyKhz(void);
 uint16_t HMI_Param_GetFaultCode(void);
 uint16_t HMI_Param_GetRunState(void);
 
@@ -68,7 +66,6 @@ void HMI_Param_SetIoutAdcK(float value);
 void HMI_Param_ToggleEnable(void);
 void HMI_Param_SetEnableCmd(uint16_t enable);
 void HMI_Param_SetModeCmd(uint16_t mode);
-void HMI_Param_SetPwmFrequencyKhz(uint16_t frequency_khz);
 
 void HMI_Param_SetVin(float value);
 void HMI_Param_SetVout(float value);

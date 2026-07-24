@@ -52,7 +52,7 @@ tests/run_hmi_display_check.exe
                                                         |
                                                         v
                                           control_if/control_model_if.c
-                                    (安全/RMS/PWM频率切换/开环占空比的标量适配)
+                                       (安全/RMS/开环占空比的标量适配)
                                                         |
                                                         v
                                      control_if/control_interface.c
@@ -69,10 +69,11 @@ tests/run_hmi_display_check.exe
   以及每 N 个控制周期触发一次的 1ms 后台任务（`ControlModel_Task1ms`，周期由
   `PWM_Profile_t.task_1ms_divider` 决定，即 `app/pwm_profile.c`）。
 - **`control_if/control_model_if.c`** 把生成模型的原始接口（`xtq2_dq_doubleloop_fullspec_*`）
-  包装成固件可用的标量函数：使能判定、故障闭锁、RMS 计算、开环占空比计算、PWM 比较值限幅、
-  PWM 频率切换等。Simulink 生成代码本身不应直接被固件其余部分调用。
+  包装成固件可用的标量函数：使能判定、故障闭锁、RMS 计算、开环占空比计算、PWM 比较值限幅等。
+  Simulink 生成代码本身不应直接被固件其余部分调用。PWM 频率固定为 20 kHz（`app/pwm_profile.c`
+  的唯一 profile 项），运行时不支持切换。
 - **`control_if/control_interface.c`** 是 HMI 与控制回路之间的唯一数据边界：
-  `Control_Setpoint_t`（vref/iref/使能/模式/PWM 频率）从 HMI 流向控制回路，
+  `Control_Setpoint_t`（vref/iref/使能/模式）从 HMI 流向控制回路，
   `Control_Feedback_t`（电压电流 RMS 与瞬时值、dq 分量、占空比、运行/故障状态）反向流动，
   用双缓冲实现无锁快照，避免 ISR 与后台任务之间的竞态。
 - **`hmi/`**：`hmi_menu.c` 是页面状态机，`hmi_param.c` 管理运行参数与 ADC 标定值（仅存 RAM，

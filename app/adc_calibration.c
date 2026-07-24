@@ -143,7 +143,7 @@ uint16_t ADC_Cal_StartOffset(void)
     const PWM_Profile_t *profile;
 
     HMI_Param_GetData(&data);
-    profile = PWM_Profile_Get(ControlModel_GetActivePwmFrequencyKhz());
+    profile = PWM_Profile_Get(APP_PWM_FREQUENCY_DEFAULT_KHZ);
     if ((ADC_Cal_IsBusy() != APP_FALSE) ||
         (data.enable_cmd != APP_FALSE) ||
         (data.run_state != APP_RUN_STATE_STOP) ||

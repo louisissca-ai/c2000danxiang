@@ -77,28 +77,6 @@ static void HMI_Menu_AdjustCurrent(int16_t step)
         }
         break;
 
-    case HMI_MENU_PAGE_SET_PWM_FREQ:
-        if ((HMI_Param_GetModeCmd() == APP_CONTROL_MODE_OPEN_LOOP) &&
-            (HMI_Param_GetEnableCmd() == APP_FALSE) &&
-            (HMI_Param_GetRunState() == APP_RUN_STATE_STOP) &&
-            (ADC_Cal_IsBusy() == APP_FALSE) && (step != 0))
-        {
-            uint16_t frequency_khz = HMI_Param_GetPwmFrequencyKhz();
-
-            if (step > 0)
-            {
-                frequency_khz = (frequency_khz == 16u) ? 18u :
-                    ((frequency_khz == 18u) ? 20u : 16u);
-            }
-            else
-            {
-                frequency_khz = (frequency_khz == 20u) ? 18u :
-                    ((frequency_khz == 18u) ? 16u : 20u);
-            }
-            HMI_Param_SetPwmFrequencyKhz(frequency_khz);
-        }
-        break;
-
     case HMI_MENU_PAGE_ADC_CAL:
         if (g_hmi_cal_editing == 0u)
         {

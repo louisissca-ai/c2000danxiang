@@ -2,9 +2,7 @@
 
 static const PWM_Profile_t g_pwm_profiles[] =
 {
-    {20u, 3000u, 400u, 20u, 10000uL, 400uL, 50.0e-6f},
-    {18u, 3333u, 360u, 18u,  9000uL, 360uL, 55.55e-6f},
-    {16u, 3750u, 320u, 16u,  8000uL, 320uL, 62.5e-6f}
+    {20u, 3000u, 400u, 20u, 10000uL, 400uL, 50.0e-6f}
 };
 
 const PWM_Profile_t *PWM_Profile_Get(uint16_t frequency_khz)

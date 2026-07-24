@@ -125,46 +125,6 @@ static uint16_t Firmware_ConfigurePwmTiming(const PWM_Profile_t *profile)
         APP_TRUE : APP_FALSE;
 }
 
-static uint16_t Firmware_ApplyRequestedPwmFrequency(void)
-{
-    Control_Setpoint_t setpoint;
-    const PWM_Profile_t *profile;
-
-    ControlIF_GetSetpoint(&setpoint);
-    if (setpoint.pwm_frequency_khz ==
-        ControlModel_GetActivePwmFrequencyKhz())
-    {
-        return APP_TRUE;
-    }
-
-    profile = PWM_Profile_Get(setpoint.pwm_frequency_khz);
-    if ((profile == 0) ||
-        ((setpoint.mode_cmd == APP_CONTROL_MODE_CLOSED_LOOP) &&
-         (setpoint.pwm_frequency_khz != APP_PWM_FREQUENCY_DEFAULT_KHZ)))
-    {
-        return APP_FALSE;
-    }
-
-    BoardPWM_ForceSafe();
-    EALLOW;
-    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 0u;
-    EDIS;
-    if (Firmware_ConfigurePwmTiming(profile) == APP_FALSE)
-    {
-        return APP_FALSE;
-    }
-    g_task_1ms_divider = 0u;
-    if (ControlModel_ApplyPwmProfile(profile->frequency_khz) == APP_FALSE)
-    {
-        return APP_FALSE;
-    }
-    g_active_pwm_profile = profile;
-    EALLOW;
-    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1u;
-    EDIS;
-    return APP_TRUE;
-}
-
 static void Firmware_ConfigureControlInterrupt(void)
 {
     /*
@@ -229,10 +189,6 @@ void rt_OneStep(void)
             Firmware_ResetControlState();
         }
         g_last_control_enabled = APP_FALSE;
-        if (Firmware_ApplyRequestedPwmFrequency() == APP_FALSE)
-        {
-            ControlModel_TripFault(FAULT_PWM);
-        }
         ADC_Cal_PushStoppedRaw(AdcaResultRegs.ADCRESULT0,
             AdccResultRegs.ADCRESULT0,
             (float)xtq2_dq_doubleloop_fullspec_P.Gain11_Gain,
@@ -262,25 +218,14 @@ void rt_OneStep(void)
                 (float)xtq2_dq_doubleloop_fullspec_P.Vin);
         }
 
-        if (ControlModel_GetActivePwmFrequencyKhz() ==
-            APP_PWM_FREQUENCY_DEFAULT_KHZ)
-        {
-            vd = (float)(xtq2_dq_doubleloop_fullspec_P.VdLPF_NumCoef *
-                xtq2_dq_doubleloop_fullspec_DW.VdLPF_states);
-            vq = (float)(xtq2_dq_doubleloop_fullspec_P.VqLPF_NumCoef *
-                xtq2_dq_doubleloop_fullspec_DW.VqLPF_states);
-            id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
-                xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
-            iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
-                xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
-        }
-        else
-        {
-            vd = 0.0f;
-            vq = 0.0f;
-            id = 0.0f;
-            iq = 0.0f;
-        }
+        vd = (float)(xtq2_dq_doubleloop_fullspec_P.VdLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.VdLPF_states);
+        vq = (float)(xtq2_dq_doubleloop_fullspec_P.VqLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.VqLPF_states);
+        id = (float)(xtq2_dq_doubleloop_fullspec_P.IdLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.IdLPF_states);
+        iq = (float)(xtq2_dq_doubleloop_fullspec_P.IqLPF_NumCoef *
+            xtq2_dq_doubleloop_fullspec_DW.IqLPF_states);
         if (starting != APP_FALSE)
         {
             /*

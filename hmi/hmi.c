@@ -21,7 +21,6 @@ static void HMI_PushSetpointToControlIF(void)
     setpoint.iref = HMI_Param_GetIref();
     setpoint.enable_cmd = HMI_Param_GetEnableCmd();
     setpoint.mode_cmd = HMI_Param_GetModeCmd();
-    setpoint.pwm_frequency_khz = HMI_Param_GetPwmFrequencyKhz();
     ControlIF_SetSetpoint(&setpoint);
 }
 

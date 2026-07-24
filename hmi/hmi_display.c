@@ -84,12 +84,6 @@ static void HMI_Display_ShowMain(const HMI_Data_t *data)
 static void HMI_Display_ShowDqMonitor(const HMI_Data_t *data)
 {
     OLED_ShowString(0u, 0u, "DQ Monitor");
-    if (data->pwm_frequency_khz != APP_PWM_FREQUENCY_DEFAULT_KHZ)
-    {
-        OLED_ShowString(0u, 2u, "N/A OPEN TEST");
-        OLED_ShowString(0u, 7u, "BACK Main");
-        return;
-    }
     OLED_ShowString(0u, 1u, "Vd:");
     OLED_ShowFloat(30u, 1u, data->vd, 2u);
     OLED_ShowString(0u, 2u, "Vq:");
@@ -99,27 +93,6 @@ static void HMI_Display_ShowDqMonitor(const HMI_Data_t *data)
     OLED_ShowString(0u, 4u, "Iq:");
     OLED_ShowFloat(30u, 4u, data->iq, 2u);
     OLED_ShowString(0u, 7u, "BACK Main");
-}
-
-static void HMI_Display_ShowPwmFrequency(const HMI_Data_t *data)
-{
-    OLED_ShowString(0u, 0u, "Set PWM Freq");
-    OLED_ShowInt(0u, 2u, (int32_t)data->pwm_frequency_khz);
-    OLED_ShowString(24u, 2u, "kHz");
-    if (data->mode_cmd != APP_CONTROL_MODE_OPEN_LOOP)
-    {
-        OLED_ShowString(0u, 5u, "OPEN LOOP ONLY");
-    }
-    else if (data->run_state != APP_RUN_STATE_STOP ||
-        data->enable_cmd != APP_FALSE)
-    {
-        OLED_ShowString(0u, 5u, "STOP TO CHANGE");
-    }
-    else
-    {
-        OLED_ShowString(0u, 5u, "UP/DOWN Change");
-    }
-    OLED_ShowString(0u, 7u, "Change Stops PWM");
 }
 
 static void HMI_Display_ShowSetValue(const char *title, float value, const char *unit)
@@ -318,10 +291,6 @@ void HMI_Display_Task(void)
 
     case HMI_MENU_PAGE_SET_MODE:
         HMI_Display_ShowMode(&data);
-        break;
-
-    case HMI_MENU_PAGE_SET_PWM_FREQ:
-        HMI_Display_ShowPwmFrequency(&data);
         break;
 
     case HMI_MENU_PAGE_ADC_CAL:

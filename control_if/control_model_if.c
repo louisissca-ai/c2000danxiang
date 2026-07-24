@@ -27,7 +27,6 @@ static float g_control_model_stopped_iout_rms;
 static uint16_t g_control_model_fault_code;
 static uint16_t g_control_model_pwm_allowed;
 static uint16_t g_control_model_active_mode;
-static uint16_t g_control_model_active_pwm_frequency_khz;
 static uint16_t g_control_model_running_rms_sample_count;
 static uint16_t g_control_model_rms_sample_count;
 static const PWM_Profile_t *g_control_model_pwm_profile;
@@ -97,8 +96,6 @@ void ControlModel_Init(void)
     g_control_model_active_mode = APP_CONTROL_MODE_CLOSED_LOOP;
     g_control_model_pwm_profile = PWM_Profile_Get(
         APP_PWM_FREQUENCY_DEFAULT_KHZ);
-    g_control_model_active_pwm_frequency_khz =
-        APP_PWM_FREQUENCY_DEFAULT_KHZ;
 }
 
 void ControlModel_Task1ms(void)
@@ -116,10 +113,7 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
 
     ControlIF_GetSetpoint(&setpoint);
 
-    if ((ControlModel_IsModeValid(setpoint.mode_cmd) == APP_FALSE) ||
-        (PWM_Profile_Get(setpoint.pwm_frequency_khz) == 0) ||
-        ((setpoint.mode_cmd == APP_CONTROL_MODE_CLOSED_LOOP) &&
-         (setpoint.pwm_frequency_khz != APP_PWM_FREQUENCY_DEFAULT_KHZ)))
+    if (ControlModel_IsModeValid(setpoint.mode_cmd) == APP_FALSE)
     {
         ControlModel_DisablePwm();
         return APP_FALSE;
@@ -134,12 +128,6 @@ uint16_t ControlModel_UpdateSafety(float vbus, float iout)
     }
 
     if (setpoint.mode_cmd != g_control_model_active_mode)
-    {
-        ControlModel_DisablePwm();
-        return APP_FALSE;
-    }
-    if (setpoint.pwm_frequency_khz !=
-        g_control_model_active_pwm_frequency_khz)
     {
         ControlModel_DisablePwm();
         return APP_FALSE;
@@ -219,29 +207,6 @@ void ControlModel_TripFault(uint16_t fault_code)
     }
 
     ControlModel_DisablePwm();
-}
-
-uint16_t ControlModel_ApplyPwmProfile(uint16_t frequency_khz)
-{
-    const PWM_Profile_t *profile = PWM_Profile_Get(frequency_khz);
-
-    if (profile == 0)
-    {
-        return APP_FALSE;
-    }
-
-    g_control_model_pwm_profile = profile;
-    g_control_model_active_pwm_frequency_khz = frequency_khz;
-    g_control_model_vref_ramp = 0.0f;
-    g_control_model_open_loop_phase = 0.0f;
-    ControlModel_ResetStoppedFeedback();
-    ControlModel_ResetRunningRms();
-    return APP_TRUE;
-}
-
-uint16_t ControlModel_GetActivePwmFrequencyKhz(void)
-{
-    return g_control_model_active_pwm_frequency_khz;
 }
 
 float ControlModel_GetVrefRamp(void)

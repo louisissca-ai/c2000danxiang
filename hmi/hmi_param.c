@@ -8,7 +8,6 @@
 
 #include "app_config.h"
 #include "app_types.h"
-#include "pwm_profile.h"
 
 static HMI_Data_t g_hmi_param_data;
 
@@ -53,7 +52,6 @@ void HMI_Param_Init(void)
     g_hmi_param_data.iout_adc_k = APP_ADC_CAL_IOUT_K_DEFAULT;
     g_hmi_param_data.enable_cmd = APP_FALSE;
     g_hmi_param_data.mode_cmd = 0u;
-    g_hmi_param_data.pwm_frequency_khz = APP_PWM_FREQUENCY_DEFAULT_KHZ;
     g_hmi_param_data.run_state = APP_RUN_STATE_STOP;
     g_hmi_param_data.fault_code = FAULT_NONE;
 }
@@ -104,11 +102,6 @@ uint16_t HMI_Param_GetEnableCmd(void)
 uint16_t HMI_Param_GetModeCmd(void)
 {
     return g_hmi_param_data.mode_cmd;
-}
-
-uint16_t HMI_Param_GetPwmFrequencyKhz(void)
-{
-    return g_hmi_param_data.pwm_frequency_khz;
 }
 
 uint16_t HMI_Param_GetFaultCode(void)
@@ -214,28 +207,6 @@ void HMI_Param_SetModeCmd(uint16_t mode)
         g_hmi_param_data.enable_cmd = APP_FALSE;
     }
     g_hmi_param_data.mode_cmd = new_mode;
-    if (new_mode == APP_CONTROL_MODE_CLOSED_LOOP)
-    {
-        g_hmi_param_data.pwm_frequency_khz =
-            APP_PWM_FREQUENCY_DEFAULT_KHZ;
-    }
-}
-
-void HMI_Param_SetPwmFrequencyKhz(uint16_t frequency_khz)
-{
-    if ((PWM_Profile_Get(frequency_khz) == 0) ||
-        (g_hmi_param_data.mode_cmd != APP_CONTROL_MODE_OPEN_LOOP) ||
-        (g_hmi_param_data.enable_cmd != APP_FALSE) ||
-        (g_hmi_param_data.run_state != APP_RUN_STATE_STOP))
-    {
-        return;
-    }
-
-    if (frequency_khz != g_hmi_param_data.pwm_frequency_khz)
-    {
-        g_hmi_param_data.enable_cmd = APP_FALSE;
-        g_hmi_param_data.pwm_frequency_khz = frequency_khz;
-    }
 }
 
 void HMI_Param_SetVin(float value)

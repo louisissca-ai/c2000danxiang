@@ -15,7 +15,6 @@ static uint16_t g_edit_index;
 static uint16_t g_editing;
 static uint16_t g_saw_vnow;
 static uint16_t g_saw_inow;
-static uint16_t g_saw_dq_unavailable;
 static float g_line_1_value;
 static float g_line_2_value;
 static float g_line_3_value;
@@ -41,10 +40,6 @@ void OLED_ShowString(uint16_t x, uint16_t y, const char *str)
     else if (strcmp(str, "Inow:") == 0)
     {
         g_saw_inow = 1u;
-    }
-    else if (strcmp(str, "N/A OPEN TEST") == 0)
-    {
-        g_saw_dq_unavailable = 1u;
     }
 }
 
@@ -130,15 +125,6 @@ int main(void)
     assert(fabsf(g_line_2_value - 0.2f) < 0.0001f);
     assert(fabsf(g_line_3_value - 1.0f) < 0.0001f);
     assert(fabsf(g_line_4_value - -0.1f) < 0.0001f);
-
-    HMI_Param_SetModeCmd(1u);
-    HMI_Param_SetPwmFrequencyKhz(18u);
-    g_page = HMI_MENU_PAGE_DQ_MONITOR;
-    HMI_Display_Task();
-    assert(g_saw_dq_unavailable != 0u);
-
-    g_page = HMI_MENU_PAGE_SET_PWM_FREQ;
-    HMI_Display_Task();
 
     g_page = HMI_MENU_PAGE_ADC_CAL;
     g_edit_index = 1u;
